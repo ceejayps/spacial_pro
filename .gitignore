@@ -24,6 +24,7 @@ HTML_PAGE_RESOURCES/
 node_modules/
 dist/
 .vite/
+**/.dot/
 coverage/
 **/node_modules/
 **/dist/
