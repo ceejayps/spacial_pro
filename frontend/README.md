@@ -1,4 +1,4 @@
-# Spcaial Pro Frontend
+# Spacial Pro Frontend
 
 React + Vite + Capacitor app for scanning, AI overlays, text recognition, and 3D model viewing.
 

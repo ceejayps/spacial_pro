@@ -58,7 +58,7 @@ type CreateCapturedScanInput = {
   annotations?: unknown[];
 };
 
-type FetchScansInput = {
+export type FetchScansInput = {
   tab?: string;
   query?: string;
 };
