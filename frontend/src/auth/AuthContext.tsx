@@ -1,42 +1,79 @@
 import type { ReactNode } from 'react';
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import {
+  authChangedEventName,
+  clearAuthSession,
+  fetchCurrentUser,
+  getAuthToken,
+  getStoredAuthUser,
+  hydrateAuthSession,
+  isAuthError,
+  loginUser,
+  registerUser,
+  type AuthUser,
+} from '../services/authService';
 
 type AuthContextValue = {
   ready: boolean;
   isAuthenticated: boolean;
+  user: AuthUser | null;
+  signIn: (input: { email: string; password: string }) => Promise<AuthUser>;
+  signUp: (input: { fullName: string; email: string; password: string }) => Promise<AuthUser>;
+  signOut: () => void;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
-const AUTH_BOOTSTRAP_KEY = 'lidar-pro.auth.stub';
-
-function readBootstrapAuthState() {
-  try {
-    return window.sessionStorage.getItem(AUTH_BOOTSTRAP_KEY) === 'true';
-  } catch {
-    return false;
-  }
-}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [user, setUser] = useState<AuthUser | null>(() => getStoredAuthUser());
 
   useEffect(() => {
     let active = true;
 
-    // PR-02 keeps bootstrap lightweight until the real auth service arrives.
     const bootstrap = async () => {
-      const nextAuthenticated = readBootstrapAuthState();
+      await hydrateAuthSession();
+      const token = getAuthToken();
 
-      if (!active) {
+      if (!token) {
+        if (active) {
+          setReady(true);
+        }
         return;
       }
 
-      setIsAuthenticated(nextAuthenticated);
-      setReady(true);
+      try {
+        const me = await fetchCurrentUser(token);
+
+        if (!active) {
+          return;
+        }
+
+        if (!me) {
+          clearAuthSession();
+          setUser(null);
+        } else {
+          setUser(me);
+        }
+      } catch (error) {
+        if (!active) {
+          return;
+        }
+
+        if (isAuthError(error)) {
+          clearAuthSession();
+          setUser(null);
+        } else {
+          setUser(getStoredAuthUser());
+        }
+      } finally {
+        if (active) {
+          setReady(true);
+        }
+      }
     };
 
-    void Promise.resolve().then(bootstrap);
+    void bootstrap();
 
     return () => {
       active = false;
@@ -44,20 +81,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const refresh = () => {
-      setIsAuthenticated(readBootstrapAuthState());
+    const handleAuthChanged = () => {
+      setUser(getStoredAuthUser());
     };
 
-    window.addEventListener('focus', refresh);
-    document.addEventListener('visibilitychange', refresh);
+    const eventName = authChangedEventName();
+    window.addEventListener(eventName, handleAuthChanged);
 
     return () => {
-      window.removeEventListener('focus', refresh);
-      document.removeEventListener('visibilitychange', refresh);
+      window.removeEventListener(eventName, handleAuthChanged);
     };
   }, []);
 
-  return <AuthContext.Provider value={{ ready, isAuthenticated }}>{children}</AuthContext.Provider>;
+  const value = useMemo<AuthContextValue>(
+    () => ({
+      ready,
+      isAuthenticated: Boolean(user),
+      user,
+      signIn: async (input) => {
+        const result = await loginUser(input);
+        setUser(result.user);
+        return result.user;
+      },
+      signUp: async (input) => {
+        const result = await registerUser(input);
+        setUser(result.user);
+        return result.user;
+      },
+      signOut: () => {
+        clearAuthSession();
+        setUser(null);
+      },
+    }),
+    [ready, user],
+  );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {
