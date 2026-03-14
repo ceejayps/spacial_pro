@@ -3,42 +3,41 @@ spring:
     exclude:
       - org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:lidarpro}
-    driver-class-name: org.postgresql.Driver
-    username: ${DB_USER:lidarpro}
-    password: ${DB_PASSWORD:lidarpro}
+    url: "${SPRING_DATASOURCE_URL}"
+    username: "${SPRING_DATASOURCE_USERNAME}"
+    password: "${SPRING_DATASOURCE_PASSWORD}"
   jpa:
     hibernate:
-      ddl-auto: update
-    open-in-view: false
+      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:}
+    open-in-view: ${SPRING_JPA_OPEN_IN_VIEW:}
   servlet:
     multipart:
-      max-file-size: 750MB
-      max-request-size: 800MB
+      max-file-size: ${SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE:}
+      max-request-size: ${SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE:}
 
 management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: ${MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE:}
 
 app:
   auth:
-    jwt-secret: ${APP_AUTH_JWT_SECRET:dev-secret-change-this-dev-secret-change-this}
-    access-token-minutes: ${APP_AUTH_ACCESS_TOKEN_MINUTES:120}
-    jwt-issuer: ${APP_AUTH_JWT_ISSUER:lidarpro-backend}
-    jwt-audience: ${APP_AUTH_JWT_AUDIENCE:lidarpro-mobile-app}
+    jwt-secret: ${APP_AUTH_JWT_SECRET}
+    access-token-minutes: ${APP_AUTH_ACCESS_TOKEN_MINUTES:}
+    jwt-issuer: ${APP_AUTH_JWT_ISSUER:}
+    jwt-audience: ${APP_AUTH_JWT_AUDIENCE:}
   storage:
-    provider: ${APP_STORAGE_PROVIDER:local}
-    root-dir: ${APP_STORAGE_ROOT_DIR:./data/models}
-    public-base-url: ${APP_STORAGE_PUBLIC_BASE_URL:/api/scans}
+    provider: ${APP_STORAGE_PROVIDER:}
+    root-dir: ${APP_STORAGE_ROOT_DIR:}
+    public-base-url: ${APP_STORAGE_PUBLIC_BASE_URL:}
     r2-endpoint: ${APP_STORAGE_R2_ENDPOINT:}
     r2-account-id: ${APP_STORAGE_R2_ACCOUNT_ID:}
     r2-bucket: ${APP_STORAGE_R2_BUCKET:}
     r2-access-key-id: ${APP_STORAGE_R2_ACCESS_KEY_ID:}
     r2-secret-access-key: ${APP_STORAGE_R2_SECRET_ACCESS_KEY:}
-    r2-region: ${APP_STORAGE_R2_REGION:auto}
+    r2-region: ${APP_STORAGE_R2_REGION:}
 
 server:
-  port: ${SERVER_PORT:8080}
+  port: ${SERVER_PORT:}
 
