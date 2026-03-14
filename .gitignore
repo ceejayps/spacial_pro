@@ -16,6 +16,8 @@ pnpm-debug.log*
 # Generated prompt/docs artifacts
 *_*_*.md
 INITIAL_PROMPT_PR01.md
+BACKEND_REBUILD_SPRING_*.md
+INITIAL_PROMPT_BACKEND_SPRING_PR01.md
 HTML_PAGE_RESOURCES/
 
 # Node / frontend
@@ -36,6 +38,7 @@ frontend/android/build/
 **/target/
 **/.m2/
 /.gradle/
+.mvn/
 
 # IDE
 .idea/
