@@ -1,0 +1,43 @@
+# macOS
+.DS_Store
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Generated prompt/docs artifacts
+*_*_*.md
+INITIAL_PROMPT_PR01.md
+HTML_PAGE_RESOURCES/
+
+# Node / frontend
+node_modules/
+dist/
+.vite/
+coverage/
+**/node_modules/
+**/dist/
+**/.vite/
+frontend/ios/App/Pods/
+frontend/ios/App/build/
+frontend/android/.gradle/
+frontend/android/app/build/
+frontend/android/build/
+
+# Java / Maven / backend
+**/target/
+**/.m2/
+/.gradle/
+
+# IDE
+.idea/
+.vscode/
+*.iml
