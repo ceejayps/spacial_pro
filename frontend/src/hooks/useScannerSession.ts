@@ -378,7 +378,7 @@ async function exportWebObjFromVideoFrame({
   const cy = (gridHeight - 1) * 0.5;
   const fx = cx / Math.tan((fovDegrees * Math.PI) / 360);
   const fy = cy / Math.tan((fovDegrees * Math.PI) / 360);
-  const lines: string[] = ['# LiDAR Pro Web OBJ export'];
+  const lines: string[] = ['# Spcaial Pro Web OBJ export'];
 
   for (let y = 0; y < gridHeight; y += 1) {
     for (let x = 0; x < gridWidth; x += 1) {

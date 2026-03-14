@@ -1,4 +1,4 @@
-# LiDAR Pro Frontend
+# Spcaial Pro Frontend
 
 React + Vite + Capacitor app for scanning, AI overlays, text recognition, and 3D model viewing.
 
