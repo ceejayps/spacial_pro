@@ -9,6 +9,9 @@ export default {
         'background-light': '#f5f7f8',
         'background-dark': '#101922',
       },
+      fontFamily: {
+        display: ['Inter', 'sans-serif'],
+      },
     },
   },
   plugins: [],
