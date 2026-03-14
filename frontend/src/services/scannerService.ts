@@ -35,7 +35,7 @@ function isNativePlatform() {
   return Capacitor.isNativePlatform();
 }
 
-function isNativeRuntime() {
+export function isNativeRuntime() {
   return isNativePlatform();
 }
 
