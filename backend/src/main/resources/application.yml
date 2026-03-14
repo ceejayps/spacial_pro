@@ -3,34 +3,34 @@ spring:
     exclude:
       - org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
   datasource:
-    url: "${SPRING_DATASOURCE_URL}"
-    username: "${SPRING_DATASOURCE_USERNAME}"
-    password: "${SPRING_DATASOURCE_PASSWORD}"
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:lidar_pro}}
+    username: ${SPRING_DATASOURCE_USERNAME:${DB_USER:postgres}}
+    password: ${SPRING_DATASOURCE_PASSWORD:${DB_PASSWORD:postgres}}
   jpa:
     hibernate:
-      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:}
-    open-in-view: ${SPRING_JPA_OPEN_IN_VIEW:}
+      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:update}
+    open-in-view: ${SPRING_JPA_OPEN_IN_VIEW:false}
   servlet:
     multipart:
-      max-file-size: ${SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE:}
-      max-request-size: ${SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE:}
+      max-file-size: ${SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE:750MB}
+      max-request-size: ${SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE:800MB}
 
 management:
   endpoints:
     web:
       exposure:
-        include: ${MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE:}
+        include: ${MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE:health,info}
 
 app:
   auth:
-    jwt-secret: ${APP_AUTH_JWT_SECRET}
-    access-token-minutes: ${APP_AUTH_ACCESS_TOKEN_MINUTES:}
-    jwt-issuer: ${APP_AUTH_JWT_ISSUER:}
-    jwt-audience: ${APP_AUTH_JWT_AUDIENCE:}
+    jwt-secret: ${APP_AUTH_JWT_SECRET:change-me-change-me-change-me-change-me}
+    access-token-minutes: ${APP_AUTH_ACCESS_TOKEN_MINUTES:120}
+    jwt-issuer: ${APP_AUTH_JWT_ISSUER:lidarpro-backend}
+    jwt-audience: ${APP_AUTH_JWT_AUDIENCE:lidarpro-mobile-app}
   storage:
-    provider: ${APP_STORAGE_PROVIDER:}
-    root-dir: ${APP_STORAGE_ROOT_DIR:}
-    public-base-url: ${APP_STORAGE_PUBLIC_BASE_URL:}
+    provider: ${APP_STORAGE_PROVIDER:local}
+    root-dir: ${APP_STORAGE_ROOT_DIR:./data/models}
+    public-base-url: ${APP_STORAGE_PUBLIC_BASE_URL:/api/scans}
     r2-endpoint: ${APP_STORAGE_R2_ENDPOINT:}
     r2-account-id: ${APP_STORAGE_R2_ACCOUNT_ID:}
     r2-bucket: ${APP_STORAGE_R2_BUCKET:}
@@ -39,5 +39,4 @@ app:
     r2-region: ${APP_STORAGE_R2_REGION:}
 
 server:
-  port: ${SERVER_PORT:}
-
+  port: ${SERVER_PORT:8080}
