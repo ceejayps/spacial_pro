@@ -3,10 +3,10 @@ spring:
     exclude:
       - org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:lidarpro}
+    url: "${SPRING_DATASOURCE_URL:jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:lidarpro}}"
     driver-class-name: org.postgresql.Driver
-    username: ${DB_USER:lidarpro}
-    password: ${DB_PASSWORD:lidarpro}
+    username: "${SPRING_DATASOURCE_USERNAME:${DB_USER:lidarpro}}"
+    password: "${SPRING_DATASOURCE_PASSWORD:${DB_PASSWORD:lidarpro}}"
   jpa:
     hibernate:
       ddl-auto: update
@@ -24,7 +24,7 @@ management:
 
 app:
   auth:
-    jwt-secret: ${APP_AUTH_JWT_SECRET:dev-secret-change-this-dev-secret-change-this}
+    jwt-secret: ${APP_AUTH_JWT_SECRET:}
     access-token-minutes: ${APP_AUTH_ACCESS_TOKEN_MINUTES:120}
     jwt-issuer: ${APP_AUTH_JWT_ISSUER:lidarpro-backend}
     jwt-audience: ${APP_AUTH_JWT_AUDIENCE:lidarpro-mobile-app}
