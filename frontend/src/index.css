@@ -3,17 +3,63 @@
 @tailwind utilities;
 
 :root {
-  color: #0f172a;
-  background-color: #f5f7f8;
-  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --safe-area-top: env(safe-area-inset-top, 0px);
+  --safe-area-right: env(safe-area-inset-right, 0px);
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-left: env(safe-area-inset-left, 0px);
 }
 
 body {
   margin: 0;
-  min-width: 320px;
-  min-height: 100vh;
+  min-height: 100dvh;
+  font-family: 'Inter', sans-serif;
 }
 
 #root {
   min-height: 100vh;
+}
+
+.native-mobile-lock,
+.native-mobile-lock body {
+  -webkit-touch-callout: none;
+  overscroll-behavior: none;
+  touch-action: manipulation;
+}
+
+.native-mobile-lock *,
+.native-mobile-lock *::before,
+.native-mobile-lock *::after {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.native-mobile-lock input,
+.native-mobile-lock textarea,
+.native-mobile-lock select,
+.native-mobile-lock [contenteditable='true'] {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+  touch-action: auto;
+  font-size: 16px;
+}
+
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+.point-cloud-bg {
+  background-image: radial-gradient(circle, #258cf4 1px, transparent 1px);
+  background-size: 32px 32px;
+  opacity: 0.15;
+}
+
+.glow-border:focus-within {
+  box-shadow: 0 0 10px rgba(37, 140, 244, 0.4);
+  border-color: #258cf4;
+}
+
+.electric-glow {
+  box-shadow: 0 0 20px rgba(37, 140, 244, 0.6);
 }
