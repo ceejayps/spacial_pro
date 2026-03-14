@@ -45,3 +45,6 @@ frontend/android/build/
 .idea/
 .vscode/
 *.iml
+
+**/ios/
+**/android/

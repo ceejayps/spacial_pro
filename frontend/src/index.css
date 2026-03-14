@@ -129,6 +129,16 @@ body {
   box-shadow: 0 0 20px rgba(37, 140, 244, 0.6);
 }
 
+html.camera-preview-active,
+body.camera-preview-active {
+  background: transparent !important;
+}
+
+html.camera-preview-active #root,
+html.camera-preview-active #root > div {
+  background: transparent !important;
+}
+
 .scan-grid-overlay {
   background-image:
     linear-gradient(to right, rgba(37, 140, 244, 0.14) 1px, transparent 1px),
