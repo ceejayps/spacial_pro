@@ -1,6 +1,6 @@
 import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
-import { getAuthToken } from './authService';
+import { authChangedEventName, getAuthToken } from './authService';
 import { listNativeSavedModels } from './scannerService';
 
 export type ScanAnnotation = {
@@ -84,6 +84,9 @@ const uploadInFlightIds = new Set<string>();
 let localScansCache: ScanRecord[] | null = null;
 let localScansLoadPromise: Promise<ScanRecord[]> | null = null;
 let lastAutoSyncAt = 0;
+let backgroundSyncBootstrapped = false;
+let backgroundSyncIntervalId: number | null = null;
+let backgroundSyncPromise: Promise<void> | null = null;
 
 function resolveApiBaseUrl() {
   const value = String(import.meta.env.VITE_API_BASE_URL || '').trim();
@@ -859,7 +862,90 @@ function shouldAutoSync() {
   return true;
 }
 
+async function runBackgroundSync(force = false) {
+  if (!getAuthToken()) {
+    return;
+  }
+
+  if (!force && !shouldAutoSync()) {
+    return;
+  }
+
+  if (backgroundSyncPromise) {
+    return backgroundSyncPromise;
+  }
+
+  backgroundSyncPromise = (async () => {
+    const scans = sortByCapturedAtDesc(await mergeNativeFolderModels());
+    const pending = scans.filter((scan) => scan.source === 'device' && scan.syncState !== 'synced');
+
+    if (!pending.length) {
+      return;
+    }
+
+    await Promise.allSettled(pending.map((scan) => syncLocalScanToCloud(scan.id)));
+  })().finally(() => {
+    backgroundSyncPromise = null;
+  });
+
+  return backgroundSyncPromise;
+}
+
+function stopBackgroundSyncLoop() {
+  if (backgroundSyncIntervalId !== null && typeof window !== 'undefined') {
+    window.clearInterval(backgroundSyncIntervalId);
+  }
+
+  backgroundSyncIntervalId = null;
+}
+
+function startBackgroundSyncLoop() {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  if (!getAuthToken()) {
+    stopBackgroundSyncLoop();
+    return;
+  }
+
+  if (backgroundSyncIntervalId !== null) {
+    return;
+  }
+
+  backgroundSyncIntervalId = window.setInterval(() => {
+    void runBackgroundSync();
+  }, AUTO_SYNC_INTERVAL_MS);
+}
+
+function ensureBackgroundSyncBootstrap() {
+  if (backgroundSyncBootstrapped || typeof window === 'undefined') {
+    return;
+  }
+
+  backgroundSyncBootstrapped = true;
+
+  const refreshLoop = () => {
+    if (getAuthToken()) {
+      startBackgroundSyncLoop();
+      void runBackgroundSync(true);
+      return;
+    }
+
+    stopBackgroundSyncLoop();
+  };
+
+  window.addEventListener(authChangedEventName(), refreshLoop);
+  window.addEventListener('online', () => {
+    void runBackgroundSync(true);
+  });
+
+  refreshLoop();
+}
+
 function startBackgroundSync(scans: ScanRecord[]) {
+  ensureBackgroundSyncBootstrap();
+
   if (!shouldAutoSync()) {
     return;
   }
@@ -870,6 +956,8 @@ function startBackgroundSync(scans: ScanRecord[]) {
     void syncLocalScanToCloud(scan.id);
   }
 }
+
+ensureBackgroundSyncBootstrap();
 
 export async function fetchScans({ tab = 'all', query = '' }: FetchScansInput = {}) {
   const mergedLocal = await mergeNativeFolderModels();
