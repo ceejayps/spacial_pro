@@ -48,5 +48,5 @@ frontend/.gradle-local/
 .vscode/
 *.iml
 
-**/ios/
+# **/ios/
 **/android/
