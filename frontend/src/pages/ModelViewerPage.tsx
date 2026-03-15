@@ -7,6 +7,7 @@ import ModelViewport, {
   type ModelViewportInteractionMode,
   type ModelViewportMeasurement,
 } from '../components/viewer/ModelViewport';
+import { exportModelToFiles, getExportActionLabel } from '../services/exportService';
 import {
   type ScanAnnotation,
   type ScanRecord,
@@ -81,6 +82,8 @@ export default function ModelViewerPage() {
   const [annotations, setAnnotations] = useState<ScanAnnotation[]>([]);
   const [selectedMeshLabel, setSelectedMeshLabel] = useState('');
   const [editStatus, setEditStatus] = useState('');
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportMessage, setExportMessage] = useState('');
   const viewerControlsRef = useRef<ModelViewportApi | null>(null);
 
   useEffect(() => {
@@ -262,6 +265,26 @@ export default function ModelViewerPage() {
     setEditStatus('All meshes are now visible.');
   }, []);
 
+  const handleExport = useCallback(async () => {
+    if (!scan) {
+      setExportMessage('Scan is not available yet.');
+      return;
+    }
+
+    setExportBusy(true);
+    setExportMessage('');
+
+    try {
+      await exportModelToFiles(scan);
+      setExportMessage(`${getExportActionLabel()} started.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to export this scan right now.';
+      setExportMessage(message);
+    } finally {
+      setExportBusy(false);
+    }
+  }, [scan]);
+
   const title = scan?.title || 'Captured Scan';
   const capturedAt = scan?.capturedAt || 'Recently captured';
   const vertices = Number(scan?.vertexCount || 0);
@@ -286,12 +309,22 @@ export default function ModelViewerPage() {
           </div>
         </div>
 
-        <Link
-          to={`/preview/${scan?.id || 'latest'}`}
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary/90"
-        >
-          Save
-        </Link>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={exportBusy || !scan}
+            className="rounded-lg border border-slate-700 px-3 py-2 text-sm font-semibold text-slate-100 transition-colors hover:border-primary/50 hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {exportBusy ? `${getExportActionLabel()}...` : getExportActionLabel()}
+          </button>
+          <Link
+            to={`/preview/${scan?.id || 'latest'}`}
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary/90"
+          >
+            Save
+          </Link>
+        </div>
       </header>
 
       {scanLoading ? (
@@ -303,6 +336,12 @@ export default function ModelViewerPage() {
       {!scanLoading && scanError ? (
         <div className="mx-4 mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-4 py-2 text-xs text-rose-200">
           {scanError}
+        </div>
+      ) : null}
+
+      {exportMessage ? (
+        <div className="mx-4 mt-3 rounded-lg border border-slate-700 bg-slate-900/70 px-4 py-2 text-xs text-slate-200">
+          {exportMessage}
         </div>
       ) : null}
 
