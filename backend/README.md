@@ -1,4 +1,4 @@
-# LiDAR Pro Backend
+# Spacial Pro Backend
 
 Spring Boot API for authentication, user profile, scan metadata, model upload, and model file delivery.
 
