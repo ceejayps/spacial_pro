@@ -49,4 +49,4 @@ frontend/.gradle-local/
 *.iml
 
 # **/ios/
-**/android/
+# **/android/
