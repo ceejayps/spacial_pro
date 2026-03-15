@@ -68,10 +68,6 @@ function getEngineForPlatform(platform: string) {
   return 'Web Mock';
 }
 
-function shouldUseCameraPreviewOnNative() {
-  return getPlatform() === 'ios' && typeof previewAny.start === 'function';
-}
-
 function normalizeNativeLidarError(error: unknown, fallbackMessage: string) {
   const message = error instanceof Error ? error.message.trim() : String(error || '').trim();
   const normalized = message.toLowerCase();
@@ -227,25 +223,6 @@ export async function startCameraPreview({
 
   if (getPlatform() === 'web') {
     return startWebCameraStream(webVideoElement);
-  }
-
-  if (shouldUseCameraPreviewOnNative()) {
-    await previewAny.start?.({
-      parent: parentId,
-      className: 'native-camera-layer',
-      position: 'rear',
-      toBack: true,
-      disableAudio: true,
-      enableZoom: true,
-      width: window.innerWidth,
-      height: window.innerHeight,
-    });
-
-    nativePreviewProvider = 'camera-preview';
-    nativePreviewRunning = true;
-    setNativePreviewCss(true);
-
-    return { mode: 'native' as const };
   }
 
   if (!hasNativeLidarPlugin()) {
