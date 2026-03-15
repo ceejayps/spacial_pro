@@ -6,57 +6,69 @@ Spring Boot API for authentication, user profile, scan metadata, model upload, a
 - Java 17
 - Spring Boot 3.3.x
 - Spring Web + Validation
-- Spring Data JPA (Hibernate)
+- Spring Data JPA
+- Spring Security
 - PostgreSQL
-- Storage adapters:
-  - Local filesystem
-  - Cloudflare R2 (S3-compatible)
+- Local filesystem or Cloudflare R2 object storage
 
-## Main Features
-- JWT auth (`register`, `login`, `me`)
-- Per-user data isolation (users can only access their own models/metadata)
-- Scan metadata CRUD
-- Multipart model upload + model download streaming
-- Health endpoints
+## Features
+- JWT auth: register, login, me, profile update
+- Per-user ownership on all scan reads and mutations
+- Multipart scan upload with metadata JSON
+- Scan list, get, patch, sync, delete, and file download
+- Consistent JSON error responses
+- Health endpoints at `/api/health` and `/actuator/health`
 
-## Project Structure
-- `src/main/java/com/lidarpro/backend/auth`: auth requests/responses/services
-- `src/main/java/com/lidarpro/backend/security`: JWT + security filters/config
-- `src/main/java/com/lidarpro/backend/scan`: scan entity/repository/controller/service
-- `src/main/java/com/lidarpro/backend/config`: app/storage config
-- `src/main/resources/application.yml`: runtime configuration
+## Project Layout
+- `src/main/java/com/lidarpro/backend/auth`
+- `src/main/java/com/lidarpro/backend/security`
+- `src/main/java/com/lidarpro/backend/scan`
+- `src/main/java/com/lidarpro/backend/storage`
+- `src/main/java/com/lidarpro/backend/common`
+- `src/main/resources/application.yml`
 
-## Prerequisites
+## Local Run
+
+### Prerequisites
 - Java 17+
 - Maven 3.9+
-- PostgreSQL (local container, Supabase, or managed DB)
+- Docker Desktop or another Docker runtime for the local Postgres container
 
-## Local Setup
+### 1. Configure environment
+From `backend/`, create a local env file from the template.
 
-### 1) Configure environment
+PowerShell:
+```powershell
+Copy-Item .env.example .env
+```
+
+POSIX shell:
 ```bash
-cd backend
 cp .env.example .env
 ```
-Set required values in `.env`.
 
-### 2) Start local Postgres (optional)
+Minimum values to set in `.env`:
+- `APP_AUTH_JWT_SECRET`
+- Either `SPRING_DATASOURCE_URL` or the `DB_*` variables used by your runtime shell
+- `APP_STORAGE_PROVIDER=local`
+- `APP_STORAGE_ROOT_DIR=./data/storage`
+- `APP_STORAGE_PUBLIC_BASE_URL=http://localhost:8080/api/scans`
+
+### 2. Start local Postgres
 ```bash
 docker compose up -d
 ```
 
-### 3) Run backend
+The bundled compose file exposes Postgres on `localhost:5432`.
+
+### 3. Run the backend
 ```bash
 mvn spring-boot:run
 ```
 
-Default port: `8080`
+The app listens on `http://localhost:8080` unless `SERVER_PORT` is overridden.
 
-## Health Checks
-- `GET /api/health`
-- `GET /actuator/health`
-
-## Environment Variables
+## Environment
 
 ### Database
 - `DB_HOST`
@@ -64,49 +76,45 @@ Default port: `8080`
 - `DB_NAME`
 - `DB_USER`
 - `DB_PASSWORD`
-
-Optional explicit datasource override:
 - `SPRING_DATASOURCE_URL`
 - `SPRING_DATASOURCE_USERNAME`
 - `SPRING_DATASOURCE_PASSWORD`
 
-For Supabase pooler, use SSL in URL, for example:
-`jdbc:postgresql://<pooler-host>:5432/postgres?sslmode=require`
-
 ### Server
-- `SERVER_PORT` (default `8080`)
+- `SERVER_PORT`
 
-### Storage
-- `APP_STORAGE_PROVIDER` (`local` or `r2`)
-- `APP_STORAGE_ROOT_DIR` (local storage path)
-- `APP_STORAGE_PUBLIC_BASE_URL`
-
-R2 settings:
-- `APP_STORAGE_R2_ENDPOINT`
-- `APP_STORAGE_R2_ACCOUNT_ID`
-- `APP_STORAGE_R2_BUCKET`
-- `APP_STORAGE_R2_ACCESS_KEY_ID`
-- `APP_STORAGE_R2_SECRET_ACCESS_KEY`
-- `APP_STORAGE_R2_REGION` (usually `auto`)
-
-### Auth / JWT
+### Auth
 - `APP_AUTH_JWT_SECRET`
 - `APP_AUTH_ACCESS_TOKEN_MINUTES`
 - `APP_AUTH_JWT_ISSUER`
 - `APP_AUTH_JWT_AUDIENCE`
 
-## API Summary
+### Storage
+- `APP_STORAGE_PROVIDER`
+- `APP_STORAGE_ROOT_DIR`
+- `APP_STORAGE_PUBLIC_BASE_URL`
+- `APP_STORAGE_R2_ENDPOINT`
+- `APP_STORAGE_R2_ACCOUNT_ID`
+- `APP_STORAGE_R2_BUCKET`
+- `APP_STORAGE_R2_ACCESS_KEY_ID`
+- `APP_STORAGE_R2_SECRET_ACCESS_KEY`
+- `APP_STORAGE_R2_REGION`
 
-Base path: `/api`
+For Supabase or another managed Postgres provider, prefer setting `SPRING_DATASOURCE_URL` directly. Example:
+`jdbc:postgresql://<host>:5432/postgres?sslmode=require`
 
-### Auth
+## API Surface
+
+### Public
+- `GET /api/health`
 - `POST /api/auth/register`
 - `POST /api/auth/login`
+- `GET /actuator/health`
+
+### Authenticated
 - `GET /api/auth/me`
 - `PATCH /api/auth/me`
-
-### Scans (JWT required)
-- `POST /api/scans` (multipart upload)
+- `POST /api/scans`
 - `GET /api/scans`
 - `GET /api/scans/{id}`
 - `PATCH /api/scans/{id}`
@@ -114,7 +122,29 @@ Base path: `/api`
 - `DELETE /api/scans/{id}`
 - `GET /api/scans/{id}/file`
 
-## Upload Example
+## Sample Checks
+
+Register:
+```bash
+curl -X POST http://localhost:8080/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"demo@example.com","fullName":"Demo User","password":"ChangeMe123!"}'
+```
+
+Login:
+```bash
+curl -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"demo@example.com","password":"ChangeMe123!"}'
+```
+
+Get current user:
+```bash
+curl http://localhost:8080/api/auth/me \
+  -H "Authorization: Bearer <access-token>"
+```
+
+Upload a scan:
 ```bash
 curl -X POST http://localhost:8080/api/scans \
   -H "Authorization: Bearer <access-token>" \
@@ -122,44 +152,53 @@ curl -X POST http://localhost:8080/api/scans \
   -F 'metadata={"title":"Living Room","modelFormat":"glb","status":"processed"}'
 ```
 
-## Deployment (DigitalOcean App Platform)
+List scans:
+```bash
+curl http://localhost:8080/api/scans \
+  -H "Authorization: Bearer <access-token>"
+```
 
-### Recommended setup
-- Backend: DigitalOcean App Platform service
-- Database: Supabase Postgres or DigitalOcean managed Postgres
-- Model files: Cloudflare R2 bucket
+Download a scan file:
+```bash
+curl http://localhost:8080/api/scans/<scan-id>/file \
+  -H "Authorization: Bearer <access-token>" \
+  --output scan.glb
+```
 
-### Steps
-1. Push repo to GitHub.
-2. Create App Platform app from repo (`backend/` as build context).
-3. Set HTTP port `8080`.
-4. Add environment variables from your `.env` (as encrypted secrets where appropriate).
-5. Deploy and verify `/api/health`.
+## Container Build
 
-## Security Baseline
-- BCrypt password hashing
-- JWT signature + issuer/audience validation
-- Ownership checks on scan data
-- Upload extension restrictions for model files
+Build the image from `backend/`:
+```bash
+docker build -t lidarpro-backend .
+```
+
+Run it:
+```bash
+docker run --rm -p 8080:8080 --env-file .env lidarpro-backend
+```
+
+## Deployment Notes
+- For local-only storage, mount a persistent volume to the storage root directory.
+- For cloud deployment, prefer `APP_STORAGE_PROVIDER=r2` and a managed Postgres database.
+- Ensure `APP_STORAGE_PUBLIC_BASE_URL` points to the public API base, for example `https://api.example.com/api/scans`.
 
 ## Troubleshooting
 
-### `Connection to localhost:5432 refused` in cloud
-Your app is using local DB host in production.
-Use managed DB host/pooler (not `localhost`) in `SPRING_DATASOURCE_URL`.
+### App cannot connect to Postgres
+- Verify the datasource URL or `DB_*` values.
+- If you are using Docker Compose locally, confirm the container is healthy with `docker compose ps`.
 
-### `NoRouteToHost` to Supabase
-Usually wrong host/port or wrong network mode.
-Use Supabase pooler endpoint and SSL mode.
+### Auth requests fail with 400 or 500
+- Confirm `APP_AUTH_JWT_SECRET` is set.
+- Check that the database schema can be created by JPA for the configured datasource.
 
-### Auth returns 500/400 unexpectedly
-- Check DB migrations/schema and datasource env vars.
-- Check `APP_AUTH_JWT_SECRET` exists.
+### File upload returns storage errors
+- Ensure `APP_STORAGE_ROOT_DIR` is writable when `APP_STORAGE_PROVIDER=local`.
+- Ensure `APP_STORAGE_PUBLIC_BASE_URL` includes `/api/scans` so generated download URLs are correct.
 
-### R2 upload failures
-- Validate key/secret/bucket/account endpoint values.
-- Confirm token has read/write permissions for bucket.
+### Cloud deployment fails against local DB settings
+- Do not use `localhost` in production datasource URLs.
+- Use the managed database host or pooler endpoint instead.
 
 ## Related Docs
-- Root overview: [../README.md](../README.md)
-- Frontend docs: [../frontend/README.md](../frontend/README.md)
+- Root project readme: [../README.md](../README.md)

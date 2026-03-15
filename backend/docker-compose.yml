@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: lidarpro-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: lidarpro
+      POSTGRES_USER: lidarpro
+      POSTGRES_PASSWORD: lidarpro
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lidarpro -d lidarpro"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+
+volumes:
+  pgdata:
