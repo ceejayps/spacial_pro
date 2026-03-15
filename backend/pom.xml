@@ -20,7 +20,7 @@
     <properties>
         <java.version>17</java.version>
         <jjwt.version>0.12.6</jjwt.version>
-        <aws.sdk.version>2.31.5</aws.sdk.version>
+        <google.cloud.storage.version>2.30.1</google.cloud.storage.version>
     </properties>
 
     <dependencies>
@@ -70,9 +70,9 @@
         </dependency>
 
         <dependency>
-            <groupId>software.amazon.awssdk</groupId>
-            <artifactId>s3</artifactId>
-            <version>${aws.sdk.version}</version>
+            <groupId>com.google.cloud</groupId>
+            <artifactId>google-cloud-storage</artifactId>
+            <version>${google.cloud.storage.version}</version>
         </dependency>
     </dependencies>
 

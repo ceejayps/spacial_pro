@@ -9,7 +9,7 @@ Spring Boot API for authentication, user profile, scan metadata, model upload, a
 - Spring Data JPA
 - Spring Security
 - PostgreSQL
-- Local filesystem or Cloudflare R2 object storage
+- Local filesystem or Firebase Storage
 
 ## Features
 - JWT auth: register, login, me, profile update
@@ -93,12 +93,11 @@ The app listens on `http://localhost:8080` unless `SERVER_PORT` is overridden.
 - `APP_STORAGE_PROVIDER`
 - `APP_STORAGE_ROOT_DIR`
 - `APP_STORAGE_PUBLIC_BASE_URL`
-- `APP_STORAGE_R2_ENDPOINT`
-- `APP_STORAGE_R2_ACCOUNT_ID`
-- `APP_STORAGE_R2_BUCKET`
-- `APP_STORAGE_R2_ACCESS_KEY_ID`
-- `APP_STORAGE_R2_SECRET_ACCESS_KEY`
-- `APP_STORAGE_R2_REGION`
+- `APP_STORAGE_FIREBASE_BUCKET`
+- `APP_STORAGE_FIREBASE_PROJECT_ID`
+- `APP_STORAGE_FIREBASE_CREDENTIALS_PATH`
+
+When `APP_STORAGE_PROVIDER=firebase`, the backend writes files to the configured Firebase Storage bucket by using Google application default credentials or the service-account JSON file at `APP_STORAGE_FIREBASE_CREDENTIALS_PATH`.
 
 For Supabase or another managed Postgres provider, prefer setting `SPRING_DATASOURCE_URL` directly. Example:
 `jdbc:postgresql://<host>:5432/postgres?sslmode=require`
@@ -179,7 +178,7 @@ docker run --rm -p 8080:8080 --env-file .env lidarpro-backend
 
 ## Deployment Notes
 - For local-only storage, mount a persistent volume to the storage root directory.
-- For cloud deployment, prefer `APP_STORAGE_PROVIDER=r2` and a managed Postgres database.
+- For cloud deployment, prefer `APP_STORAGE_PROVIDER=firebase` and a managed Postgres database.
 - Ensure `APP_STORAGE_PUBLIC_BASE_URL` points to the public API base, for example `https://api.example.com/api/scans`.
 
 ## Troubleshooting
@@ -194,6 +193,8 @@ docker run --rm -p 8080:8080 --env-file .env lidarpro-backend
 
 ### File upload returns storage errors
 - Ensure `APP_STORAGE_ROOT_DIR` is writable when `APP_STORAGE_PROVIDER=local`.
+- Ensure `APP_STORAGE_FIREBASE_BUCKET` is set when `APP_STORAGE_PROVIDER=firebase`.
+- Ensure the runtime has Google credentials, either through `APP_STORAGE_FIREBASE_CREDENTIALS_PATH` or application default credentials.
 - Ensure `APP_STORAGE_PUBLIC_BASE_URL` includes `/api/scans` so generated download URLs are correct.
 
 ### Cloud deployment fails against local DB settings
