@@ -697,7 +697,7 @@ export default function ScanPage() {
         <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/40" />
       </div>
 
-      <div className="relative z-10 flex h-full flex-col safe-area-top safe-area-x">
+      <div className="relative z-10 flex h-full flex-col overflow-y-auto overscroll-contain safe-area-top safe-area-x safe-area-bottom">
         <header className="flex items-center justify-between px-6 pb-4 pt-3">
           <button
             type="button"
