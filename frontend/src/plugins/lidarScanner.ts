@@ -42,6 +42,15 @@ export type SavedModelList = {
   models: unknown[];
 };
 
+export type DeleteSavedModelOptions = {
+  filePath: string;
+};
+
+export type DeleteSavedModelResult = {
+  deleted: boolean;
+  filePath: string;
+};
+
 export type ObjectDetectionOptions = {
   minConfidence?: number;
   intervalMs?: number;
@@ -80,6 +89,7 @@ export interface LidarScannerPlugin {
   getScanStatus: () => Promise<ScanStatus>;
   exportScan: () => Promise<ScanExportResult>;
   listSavedModels: () => Promise<SavedModelList | unknown[]>;
+  deleteSavedModel: (options: DeleteSavedModelOptions) => Promise<DeleteSavedModelResult>;
   startObjectDetection: (options?: ObjectDetectionOptions) => Promise<ObjectDetectionStatus>;
   stopObjectDetection: () => Promise<ObjectDetectionStatus>;
   getObjectDetectionStatus: () => Promise<ObjectDetectionStatus>;
@@ -190,6 +200,13 @@ class LidarScannerWeb extends WebPlugin implements LidarScannerPlugin {
 
   async listSavedModels() {
     return { models: [] };
+  }
+
+  async deleteSavedModel(options: DeleteSavedModelOptions) {
+    return {
+      deleted: false,
+      filePath: String(options?.filePath || ''),
+    };
   }
 
   async startObjectDetection(options: ObjectDetectionOptions = {}) {

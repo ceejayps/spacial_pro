@@ -359,6 +359,20 @@ export async function listNativeSavedModels() {
   return [];
 }
 
+export async function deleteNativeSavedModel(filePath: string) {
+  const normalizedPath = String(filePath || '').trim();
+
+  if (!normalizedPath || !isNativePlatform() || !hasNativeLidarPlugin()) {
+    return { deleted: false, filePath: normalizedPath };
+  }
+
+  try {
+    return await LidarScanner.deleteSavedModel({ filePath: normalizedPath });
+  } catch (error) {
+    throw normalizeNativeLidarError(error, 'Failed to delete saved model.');
+  }
+}
+
 export async function startNativeObjectDetection(options: ObjectDetectionOptions = {}) {
   if (!hasNativeLidarPlugin()) {
     throw new Error(NO_LIDAR_MESSAGE);
@@ -467,6 +481,7 @@ export const scannerService = {
   getNativeScanStatus,
   exportNativeScan,
   listNativeSavedModels,
+  deleteNativeSavedModel,
   startNativeObjectDetection,
   stopNativeObjectDetection,
   getNativeObjectDetectionStatus,

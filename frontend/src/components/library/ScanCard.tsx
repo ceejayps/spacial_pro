@@ -4,6 +4,9 @@ import type { ScanRecord } from '../../services/scanService';
 type ScanCardProps = {
   scan: ScanRecord;
   actionBusy?: boolean;
+  selectable?: boolean;
+  selected?: boolean;
+  onSelectToggle?: (scan: ScanRecord) => void;
   onDelete?: (scan: ScanRecord) => void;
   onSync?: (scan: ScanRecord) => void;
 };
@@ -59,8 +62,17 @@ function SyncBadge({ syncState }: { syncState: string }) {
   );
 }
 
-export default function ScanCard({ scan, onDelete, onSync, actionBusy = false }: ScanCardProps) {
+export default function ScanCard({
+  scan,
+  actionBusy = false,
+  selectable = false,
+  selected = false,
+  onSelectToggle,
+  onDelete,
+  onSync,
+}: ScanCardProps) {
   const isDevice = scan.source === 'device';
+  const selectionDisabled = !selectable || actionBusy;
 
   return (
     <div className="group flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-100 p-3 transition-colors hover:border-primary/40 dark:border-slate-800 dark:bg-slate-800/30">
@@ -73,6 +85,20 @@ export default function ScanCard({ scan, onDelete, onSync, actionBusy = false }:
         />
         <SyncBadge syncState={scan.syncState} />
         <StatusBadge status={scan.status} progress={scan.progress} />
+        <button
+          type="button"
+          aria-label={selected ? `Deselect ${scan.title}` : `Select ${scan.title}`}
+          aria-pressed={selected}
+          onClick={() => onSelectToggle?.(scan)}
+          disabled={selectionDisabled}
+          className={`absolute bottom-2 right-2 flex size-9 items-center justify-center rounded-full border backdrop-blur-md transition-colors ${
+            selected
+              ? 'border-primary bg-primary text-white'
+              : 'border-slate-300/70 bg-white/85 text-slate-700 dark:border-slate-600 dark:bg-slate-900/75 dark:text-slate-200'
+          } disabled:cursor-not-allowed disabled:opacity-60`}
+        >
+          <span className="material-symbols-outlined text-[18px]">{selected ? 'check' : 'radio_button_unchecked'}</span>
+        </button>
       </div>
 
       <div className="flex flex-col">

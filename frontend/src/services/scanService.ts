@@ -1,7 +1,8 @@
 import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
-import { authChangedEventName, getAuthToken } from './authService';
-import { listNativeSavedModels } from './scannerService';
+import { getAuthToken } from './authService';
+import { requestApi, resolveApiBaseUrl } from './apiClient';
+import { deleteNativeSavedModel, listNativeSavedModels } from './scannerService';
 
 export type ScanAnnotation = {
   id: string;
@@ -74,8 +75,8 @@ type NativeSavedModel = {
 };
 
 const RECENT_LIMIT = 2;
-const AUTO_SYNC_INTERVAL_MS = 15_000;
 const LOCAL_SCANS_KEY = 'lidarpro.scans.local.v1';
+const REMOTE_SCANS_CACHE_KEY = 'lidarpro.scans.remote.v1';
 const LEGACY_LOCAL_SCANS_KEYS = [
   LOCAL_SCANS_KEY,
   'lidarpro.scans.local',
@@ -90,20 +91,8 @@ const API_BASE_URL = resolveApiBaseUrl();
 const uploadInFlightIds = new Set<string>();
 let localScansCache: ScanRecord[] | null = null;
 let localScansLoadPromise: Promise<ScanRecord[]> | null = null;
-let lastAutoSyncAt = 0;
-let backgroundSyncBootstrapped = false;
-let backgroundSyncIntervalId: number | null = null;
-let backgroundSyncPromise: Promise<void> | null = null;
-
-function resolveApiBaseUrl() {
-  const value = String(import.meta.env.VITE_API_BASE_URL || '').trim();
-
-  if (value) {
-    return value.replace(/\/+$/, '');
-  }
-
-  return 'http://localhost:8080';
-}
+let remoteScansCache: ScanRecord[] | null = null;
+let remoteScansLoadPromise: Promise<ScanRecord[]> | null = null;
 
 function isNativeRuntime() {
   return Capacitor.isNativePlatform();
@@ -145,49 +134,13 @@ function toAbsoluteUrl(value: string) {
   return `${API_BASE_URL}/${raw}`;
 }
 
-async function parseErrorMessage(response: Response) {
-  const fallback = `Request failed (${response.status})`;
-
-  try {
-    const payload = await response.json();
-
-    if (typeof payload?.message === 'string' && payload.message.trim()) {
-      return payload.message;
-    }
-
-    return fallback;
-  } catch {
-    try {
-      const text = await response.text();
-      return text.trim() || fallback;
-    } catch {
-      return fallback;
-    }
-  }
-}
-
 async function request(pathValue: string, init: RequestInit = {}) {
-  const authToken = getAuthToken();
-
-  const response = await fetch(apiUrl(pathValue), {
-    ...init,
-    headers: {
-      Accept: 'application/json',
-      ...(init.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
-      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-      ...(init.headers || {}),
-    },
+  return requestApi(pathValue, {
+    method: init.method,
+    body: init.body,
+    headers: (init.headers || {}) as Record<string, string>,
+    token: getAuthToken(),
   });
-
-  if (!response.ok) {
-    throw new Error(await parseErrorMessage(response));
-  }
-
-  if (response.status === 204) {
-    return null;
-  }
-
-  return response.json();
 }
 
 function normalizeAnnotation(annotation: unknown, index: number): ScanAnnotation {
@@ -270,6 +223,18 @@ function inferFormat(exportData: Record<string, unknown>) {
     return 'obj';
   }
 
+  if (source.endsWith('.stl')) {
+    return 'stl';
+  }
+
+  if (source.endsWith('.ply')) {
+    return 'ply';
+  }
+
+  if (source.endsWith('.usdz')) {
+    return 'usdz';
+  }
+
   return 'glb';
 }
 
@@ -325,6 +290,18 @@ function defaultContentType(format: string) {
 
   if (format === 'obj') {
     return 'text/plain';
+  }
+
+  if (format === 'stl') {
+    return 'model/stl';
+  }
+
+  if (format === 'ply') {
+    return 'application/octet-stream';
+  }
+
+  if (format === 'usdz') {
+    return 'model/vnd.usdz+zip';
   }
 
   return 'application/octet-stream';
@@ -405,6 +382,9 @@ async function loadModelBlob(exportData: Record<string, unknown>) {
 function mapBackendScan(scan: Record<string, any>): ScanRecord {
   const capturedAtIso = String(scan.capturedAt || scan.createdAt || new Date().toISOString());
   const sizeBytes = Number(scan.fileSizeBytes || 0);
+  const cloudModelUrl = toAbsoluteUrl(String(scan.cloudModelUrl || ''));
+  const fileDownloadUrl = toAbsoluteUrl(String(scan.fileDownloadUrl || scan.modelUrl || cloudModelUrl || ''));
+  const modelUrl = cloudModelUrl || toAbsoluteUrl(String(scan.modelUrl || scan.fileDownloadUrl || ''));
 
   return {
     id: String(scan.id || ''),
@@ -416,8 +396,8 @@ function mapBackendScan(scan: Record<string, any>): ScanRecord {
     sizeLabel: formatBytes(sizeBytes),
     sizeBytes,
     thumbnail: DEFAULT_CAPTURE_THUMBNAIL,
-    modelUrl: toAbsoluteUrl(String(scan.modelUrl || scan.fileDownloadUrl || '')),
-    fileDownloadUrl: toAbsoluteUrl(String(scan.fileDownloadUrl || scan.modelUrl || '')),
+    modelUrl,
+    fileDownloadUrl,
     modelPath: String(scan.extraMetadata?.deviceFilePath || ''),
     modelFormat: String(scan.modelFormat || ''),
     vertexCount: Number(scan.vertexCount || 0),
@@ -429,7 +409,7 @@ function mapBackendScan(scan: Record<string, any>): ScanRecord {
     source: String(scan.source || 'cloud'),
     storageLocation: String(scan.storageLocation || 'cloud'),
     syncState: String(scan.syncState || 'synced'),
-    cloudModelUrl: toAbsoluteUrl(String(scan.cloudModelUrl || '')),
+    cloudModelUrl,
     cloudSyncedAt: String(scan.cloudSyncedAt || ''),
     annotations: normalizeAnnotations(scan.annotations),
     createdAt: String(scan.createdAt || ''),
@@ -451,6 +431,60 @@ function hashString(value: string) {
 
 function createLocalId(seed: string) {
   return `local-${hashString(seed)}-${Date.now()}`;
+}
+
+function normalizeModelPathKey(pathValue: string) {
+  let raw = String(pathValue || '').trim();
+
+  if (!raw) {
+    return '';
+  }
+
+  if (raw.startsWith('file://')) {
+    try {
+      raw = decodeURIComponent(new URL(raw).pathname);
+    } catch {
+      raw = raw.replace(/^file:\/\//, '');
+    }
+  }
+
+  raw = raw.replace(/^\/private(?=\/var\/)/, '');
+  raw = raw.replace(/\/+/g, '/');
+  return raw;
+}
+
+function resolveLocalIdentity(scan: Record<string, any>) {
+  const modelPathKey = normalizeModelPathKey(String(scan.modelPath || scan.filePath || ''));
+
+  if (modelPathKey) {
+    return `path:${modelPathKey}`;
+  }
+
+  const remoteId = String(scan.remoteId || '').trim();
+
+  if (remoteId) {
+    return `remote:${remoteId}`;
+  }
+
+  const id = String(scan.id || '').trim();
+
+  if (id) {
+    return `id:${id}`;
+  }
+
+  return '';
+}
+
+function syncStateRank(syncState: string) {
+  if (syncState === 'synced') {
+    return 3;
+  }
+
+  if (syncState === 'syncing') {
+    return 2;
+  }
+
+  return 1;
 }
 
 function serializeJson(value: unknown) {
@@ -539,9 +573,16 @@ async function readRawLocalScans() {
 
 async function writeRawLocalScans(scans: ScanRecord[]) {
   const serialized = serializeJson(scans);
+  const legacyKeysToClear = LEGACY_LOCAL_SCANS_KEYS.filter((key) => key !== LOCAL_SCANS_KEY);
 
   if (isNativeRuntime()) {
-    await Preferences.set({ key: LOCAL_SCANS_KEY, value: serialized });
+    if (scans.length) {
+      await Preferences.set({ key: LOCAL_SCANS_KEY, value: serialized });
+    } else {
+      await Preferences.remove({ key: LOCAL_SCANS_KEY });
+    }
+
+    await Promise.all(legacyKeysToClear.map((key) => Preferences.remove({ key })));
     return;
   }
 
@@ -550,7 +591,64 @@ async function writeRawLocalScans(scans: ScanRecord[]) {
   }
 
   try {
-    window.localStorage.setItem(LOCAL_SCANS_KEY, serialized);
+    if (scans.length) {
+      window.localStorage.setItem(LOCAL_SCANS_KEY, serialized);
+    } else {
+      window.localStorage.removeItem(LOCAL_SCANS_KEY);
+    }
+
+    for (const key of legacyKeysToClear) {
+      window.localStorage.removeItem(key);
+    }
+  } catch {
+    // Ignore write failures to keep in-memory workflow alive.
+  }
+}
+
+async function readRawRemoteScans() {
+  if (isNativeRuntime()) {
+    try {
+      const result = await Preferences.get({ key: REMOTE_SCANS_CACHE_KEY });
+      return parseJsonCollection(result.value);
+    } catch {
+      return [];
+    }
+  }
+
+  if (typeof window === 'undefined') {
+    return [];
+  }
+
+  try {
+    return parseJsonCollection(window.localStorage.getItem(REMOTE_SCANS_CACHE_KEY));
+  } catch {
+    return [];
+  }
+}
+
+async function writeRawRemoteScans(scans: ScanRecord[]) {
+  const serialized = serializeJson(scans);
+
+  if (isNativeRuntime()) {
+    if (scans.length) {
+      await Preferences.set({ key: REMOTE_SCANS_CACHE_KEY, value: serialized });
+    } else {
+      await Preferences.remove({ key: REMOTE_SCANS_CACHE_KEY });
+    }
+
+    return;
+  }
+
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    if (scans.length) {
+      window.localStorage.setItem(REMOTE_SCANS_CACHE_KEY, serialized);
+    } else {
+      window.localStorage.removeItem(REMOTE_SCANS_CACHE_KEY);
+    }
   } catch {
     // Ignore write failures to keep in-memory workflow alive.
   }
@@ -599,6 +697,134 @@ function normalizeLocalScan(raw: Record<string, any>): ScanRecord {
   };
 }
 
+function normalizeRemoteScan(raw: Record<string, any>): ScanRecord {
+  const capturedAtIso = String(raw.capturedAtIso || raw.capturedAt || raw.createdAt || new Date().toISOString());
+  const sizeBytes = Number(raw.sizeBytes || raw.fileSizeBytes || 0);
+  const modelPath = String(raw.modelPath || raw.filePath || '');
+  const cloudModelUrl = toAbsoluteUrl(String(raw.cloudModelUrl || raw.modelUrl || raw.fileDownloadUrl || ''));
+  const modelUrl = cloudModelUrl || toAbsoluteUrl(String(raw.modelUrl || raw.fileDownloadUrl || ''));
+  const fileDownloadUrl = toAbsoluteUrl(String(raw.fileDownloadUrl || raw.modelUrl || cloudModelUrl || ''));
+  const nowIso = new Date().toISOString();
+
+  return {
+    id: String(raw.id || raw.remoteId || ''),
+    remoteId: String(raw.remoteId || raw.id || ''),
+    title: String(raw.title || 'Captured Scan'),
+    capturedAtIso,
+    capturedAt: formatCapturedAt(capturedAtIso),
+    status: String(raw.status || 'processed'),
+    progress: String(raw.status || '') === 'exporting' ? Number(raw.progress || 0) : 100,
+    sizeBytes,
+    sizeLabel: formatBytes(sizeBytes),
+    thumbnail: String(raw.thumbnail || DEFAULT_CAPTURE_THUMBNAIL),
+    modelPath,
+    modelUrl,
+    fileDownloadUrl,
+    modelFormat: String(raw.modelFormat || inferFormat(raw)),
+    vertexCount: Number(raw.vertexCount || 0),
+    faceCount: Number(raw.faceCount || 0),
+    pointsCaptured: Number(raw.pointsCaptured || 0),
+    scanQuality: Number(raw.scanQuality || 0),
+    estimatedAccuracyMm: Number(raw.estimatedAccuracyMm || 0),
+    arEngine: String(raw.arEngine || ''),
+    source: String(raw.source || 'cloud'),
+    storageLocation: String(raw.storageLocation || 'cloud'),
+    syncState: String(raw.syncState || 'synced'),
+    cloudModelUrl,
+    cloudSyncedAt: String(raw.cloudSyncedAt || raw.updatedAt || ''),
+    annotations: normalizeAnnotations(raw.annotations),
+    createdAt: String(raw.createdAt || capturedAtIso || nowIso),
+    updatedAt: String(raw.updatedAt || nowIso),
+    originalFilename: String(raw.originalFilename || inferFilenameFromPath(modelUrl || fileDownloadUrl, String(raw.modelFormat || 'glb'))),
+    contentType: String(raw.contentType || defaultContentType(String(raw.modelFormat || 'glb'))),
+    uploadMetadata: raw.uploadMetadata || null,
+    lastSyncError: String(raw.lastSyncError || ''),
+  };
+}
+
+function pickPreferredLocalRecord(current: ScanRecord, incoming: ScanRecord) {
+  const currentScore =
+    (current.remoteId ? 4 : 0) +
+    (current.cloudModelUrl ? 3 : 0) +
+    (current.uploadMetadata ? 2 : 0) +
+    (current.annotations.length ? 2 : 0) +
+    syncStateRank(current.syncState);
+  const incomingScore =
+    (incoming.remoteId ? 4 : 0) +
+    (incoming.cloudModelUrl ? 3 : 0) +
+    (incoming.uploadMetadata ? 2 : 0) +
+    (incoming.annotations.length ? 2 : 0) +
+    syncStateRank(incoming.syncState);
+
+  return incomingScore > currentScore ? incoming : current;
+}
+
+function mergeLocalRecords(current: ScanRecord, incoming: ScanRecord) {
+  const preferred = pickPreferredLocalRecord(current, incoming);
+  const fallback = preferred === current ? incoming : current;
+  const mergedCapturedAtIso =
+    new Date(preferred.capturedAtIso || preferred.createdAt || 0).getTime() >=
+    new Date(fallback.capturedAtIso || fallback.createdAt || 0).getTime()
+      ? preferred.capturedAtIso
+      : fallback.capturedAtIso;
+  const mergedUpdatedAt =
+    new Date(preferred.updatedAt || 0).getTime() >= new Date(fallback.updatedAt || 0).getTime()
+      ? preferred.updatedAt
+      : fallback.updatedAt;
+
+  return normalizeLocalScan({
+    ...fallback,
+    ...preferred,
+    id: preferred.id || fallback.id,
+    remoteId: preferred.remoteId || fallback.remoteId,
+    title:
+      preferred.title && preferred.title !== 'Captured Scan'
+        ? preferred.title
+        : fallback.title || preferred.title,
+    modelPath: preferred.modelPath || fallback.modelPath,
+    modelUrl: preferred.modelUrl || fallback.modelUrl,
+    fileDownloadUrl: preferred.fileDownloadUrl || fallback.fileDownloadUrl,
+    syncState:
+      syncStateRank(preferred.syncState) >= syncStateRank(fallback.syncState)
+        ? preferred.syncState
+        : fallback.syncState,
+    cloudModelUrl: preferred.cloudModelUrl || fallback.cloudModelUrl,
+    cloudSyncedAt: preferred.cloudSyncedAt || fallback.cloudSyncedAt,
+    annotations: preferred.annotations.length ? preferred.annotations : fallback.annotations,
+    uploadMetadata: preferred.uploadMetadata || fallback.uploadMetadata,
+    lastSyncError: preferred.lastSyncError || fallback.lastSyncError,
+    capturedAtIso: mergedCapturedAtIso,
+    createdAt: preferred.createdAt || fallback.createdAt || mergedCapturedAtIso,
+    updatedAt: mergedUpdatedAt || preferred.updatedAt || fallback.updatedAt,
+  });
+}
+
+function dedupeLocalScans(scans: ScanRecord[]) {
+  const deduped: ScanRecord[] = [];
+  const indexByIdentity = new Map<string, number>();
+
+  for (const scan of scans.map((item) => normalizeLocalScan(item))) {
+    const identity = resolveLocalIdentity(scan);
+
+    if (!identity) {
+      deduped.push(scan);
+      continue;
+    }
+
+    const existingIndex = indexByIdentity.get(identity);
+
+    if (existingIndex == null) {
+      indexByIdentity.set(identity, deduped.length);
+      deduped.push(scan);
+      continue;
+    }
+
+    deduped[existingIndex] = mergeLocalRecords(deduped[existingIndex], scan);
+  }
+
+  return deduped;
+}
+
 async function loadLocalScans() {
   if (localScansCache) {
     return localScansCache;
@@ -607,7 +833,7 @@ async function loadLocalScans() {
   if (!localScansLoadPromise) {
     localScansLoadPromise = (async () => {
       const raw = await readRawLocalScans();
-      const normalized = raw.map((item) => normalizeLocalScan(item));
+      const normalized = sortByCapturedAtDesc(dedupeLocalScans(raw.map((item) => normalizeLocalScan(item))));
       localScansCache = normalized;
       return normalized;
     })().finally(() => {
@@ -618,30 +844,89 @@ async function loadLocalScans() {
   return localScansLoadPromise;
 }
 
+async function loadCachedRemoteScans() {
+  if (!getAuthToken()) {
+    remoteScansCache = [];
+    return [];
+  }
+
+  if (remoteScansCache) {
+    return remoteScansCache;
+  }
+
+  if (!remoteScansLoadPromise) {
+    remoteScansLoadPromise = (async () => {
+      const raw = await readRawRemoteScans();
+      const normalized = raw
+        .map((item) => normalizeRemoteScan(item as Record<string, any>))
+        .filter((item) => Boolean(item.id));
+      remoteScansCache = normalized;
+      return normalized;
+    })().finally(() => {
+      remoteScansLoadPromise = null;
+    });
+  }
+
+  return remoteScansLoadPromise;
+}
+
 async function persistLocalScans(scans: ScanRecord[]) {
-  const normalized = scans.map((scan) => normalizeLocalScan(scan));
+  const normalized = sortByCapturedAtDesc(dedupeLocalScans(scans.map((scan) => normalizeLocalScan(scan))));
   localScansCache = normalized;
   await writeRawLocalScans(normalized);
   return normalized;
 }
 
+async function persistRemoteScans(scans: ScanRecord[]) {
+  const normalized = scans
+    .map((scan) => normalizeRemoteScan(scan))
+    .filter((scan) => Boolean(scan.id));
+  remoteScansCache = normalized;
+  await writeRawRemoteScans(normalized);
+  return normalized;
+}
+
+async function removeCachedRemoteScan(scan: { id?: string; remoteId?: string } | null | undefined) {
+  const remoteIds = new Set(
+    [String(scan?.remoteId || '').trim(), String(scan?.id || '').trim()].filter(Boolean),
+  );
+
+  if (!remoteIds.size) {
+    return;
+  }
+
+  const current = await loadCachedRemoteScans();
+  const next = current.filter(
+    (item) => !remoteIds.has(String(item.id || '').trim()) && !remoteIds.has(String(item.remoteId || '').trim()),
+  );
+
+  await persistRemoteScans(next);
+}
+
 async function upsertLocalScan(scan: Record<string, any>) {
   const current = await loadLocalScans();
   const next = [...current];
-  const index = next.findIndex((item) => item.id === scan.id);
+  const nextScan = normalizeLocalScan(scan);
+  const nextIdentity = resolveLocalIdentity(nextScan);
+  const index = next.findIndex(
+    (item) => item.id === nextScan.id || (nextIdentity && resolveLocalIdentity(item) === nextIdentity),
+  );
 
   if (index >= 0) {
-    next[index] = normalizeLocalScan({
-      ...next[index],
-      ...scan,
-      updatedAt: new Date().toISOString(),
-    });
+    next[index] = mergeLocalRecords(
+      next[index],
+      normalizeLocalScan({
+        ...next[index],
+        ...scan,
+        updatedAt: new Date().toISOString(),
+      }),
+    );
   } else {
-    next.unshift(normalizeLocalScan(scan));
+    next.unshift(nextScan);
   }
 
   const saved = await persistLocalScans(next);
-  return saved.find((item) => item.id === scan.id) || null;
+  return saved.find((item) => item.id === nextScan.id || (nextIdentity && resolveLocalIdentity(item) === nextIdentity)) || null;
 }
 
 async function removeLocalScan(scanId: string) {
@@ -660,7 +945,11 @@ async function removeLocalScan(scanId: string) {
 
 async function mergeNativeFolderModels() {
   const existing = await loadLocalScans();
-  const byPath = new Map(existing.map((item) => [String(item.modelPath || ''), item]));
+  const byPath = new Map(
+    existing
+      .map((item) => [normalizeModelPathKey(String(item.modelPath || '')), item] as const)
+      .filter(([key]) => Boolean(key)),
+  );
   const nativeModels = (await listNativeSavedModels()) as NativeSavedModel[];
 
   if (!Array.isArray(nativeModels) || nativeModels.length === 0) {
@@ -672,8 +961,9 @@ async function mergeNativeFolderModels() {
 
   for (const nativeModel of nativeModels) {
     const modelPath = String(nativeModel?.filePath || '').trim();
+    const normalizedPathKey = normalizeModelPathKey(modelPath);
 
-    if (!modelPath || byPath.has(modelPath)) {
+    if (!modelPath || (normalizedPathKey && byPath.has(normalizedPathKey))) {
       continue;
     }
 
@@ -698,7 +988,9 @@ async function mergeNativeFolderModels() {
     });
 
     merged.push(localRecord);
-    byPath.set(modelPath, localRecord);
+    if (normalizedPathKey) {
+      byPath.set(normalizedPathKey, localRecord);
+    }
     hasChanges = true;
   }
 
@@ -717,7 +1009,12 @@ function byTab(scans: ScanRecord[], tab: string) {
 
   if (tab === 'cloud') {
     return scans.filter(
-      (scan) => scan.storageLocation === 'cloud' || scan.syncState === 'synced' || scan.source === 'cloud',
+      (scan) =>
+        scan.syncState === 'synced' ||
+        scan.source === 'cloud' ||
+        Boolean(scan.remoteId) ||
+        Boolean(scan.cloudModelUrl) ||
+        Boolean(scan.cloudSyncedAt),
     );
   }
 
@@ -870,13 +1167,16 @@ async function syncLocalScanToCloud(scanId: string) {
     });
 
     const remoteScan = mapBackendScan(response as Record<string, any>);
+    const remoteModelFetchUrl = remoteScan.cloudModelUrl || remoteScan.modelUrl || remoteScan.fileDownloadUrl || '';
     const synced = await upsertLocalScan({
       ...record,
       remoteId: remoteScan.id,
       syncState: 'synced',
       storageLocation: record.modelPath ? 'device' : 'cloud',
+      modelUrl: record.modelPath ? record.modelUrl : remoteModelFetchUrl || record.modelUrl,
+      fileDownloadUrl: remoteModelFetchUrl || record.fileDownloadUrl,
       cloudSyncedAt: new Date().toISOString(),
-      cloudModelUrl: remoteScan.cloudModelUrl || remoteScan.modelUrl || '',
+      cloudModelUrl: remoteModelFetchUrl,
       lastSyncError: '',
     });
 
@@ -894,119 +1194,12 @@ async function syncLocalScanToCloud(scanId: string) {
   }
 }
 
-function shouldAutoSync() {
-  const token = getAuthToken();
-
-  if (!token) {
-    return false;
-  }
-
-  const now = Date.now();
-
-  if (now - lastAutoSyncAt < AUTO_SYNC_INTERVAL_MS) {
-    return false;
-  }
-
-  lastAutoSyncAt = now;
-  return true;
+export async function getCachedScans({ tab = 'all', query = '' }: FetchScansInput = {}) {
+  const localScans = sortByCapturedAtDesc(await mergeNativeFolderModels());
+  const remoteScans = await loadCachedRemoteScans();
+  const scans = mergeLocalAndRemoteScans(localScans, remoteScans);
+  return byQuery(byTab(scans, tab), query);
 }
-
-async function runBackgroundSync(force = false) {
-  if (!getAuthToken()) {
-    return;
-  }
-
-  if (!force && !shouldAutoSync()) {
-    return;
-  }
-
-  if (backgroundSyncPromise) {
-    return backgroundSyncPromise;
-  }
-
-  backgroundSyncPromise = (async () => {
-    const scans = sortByCapturedAtDesc(await mergeNativeFolderModels());
-    const pending = scans.filter((scan) => scan.source === 'device' && scan.syncState !== 'synced');
-
-    if (!pending.length) {
-      return;
-    }
-
-    await Promise.allSettled(pending.map((scan) => syncLocalScanToCloud(scan.id)));
-  })().finally(() => {
-    backgroundSyncPromise = null;
-  });
-
-  return backgroundSyncPromise;
-}
-
-function stopBackgroundSyncLoop() {
-  if (backgroundSyncIntervalId !== null && typeof window !== 'undefined') {
-    window.clearInterval(backgroundSyncIntervalId);
-  }
-
-  backgroundSyncIntervalId = null;
-}
-
-function startBackgroundSyncLoop() {
-  if (typeof window === 'undefined') {
-    return;
-  }
-
-  if (!getAuthToken()) {
-    stopBackgroundSyncLoop();
-    return;
-  }
-
-  if (backgroundSyncIntervalId !== null) {
-    return;
-  }
-
-  backgroundSyncIntervalId = window.setInterval(() => {
-    void runBackgroundSync();
-  }, AUTO_SYNC_INTERVAL_MS);
-}
-
-function ensureBackgroundSyncBootstrap() {
-  if (backgroundSyncBootstrapped || typeof window === 'undefined') {
-    return;
-  }
-
-  backgroundSyncBootstrapped = true;
-
-  const refreshLoop = () => {
-    if (getAuthToken()) {
-      startBackgroundSyncLoop();
-      void runBackgroundSync(true);
-      return;
-    }
-
-    stopBackgroundSyncLoop();
-  };
-
-  window.addEventListener(authChangedEventName(), refreshLoop);
-  window.addEventListener('online', () => {
-    void runBackgroundSync(true);
-  });
-
-  refreshLoop();
-}
-
-function startBackgroundSync(scans: ScanRecord[]) {
-  ensureBackgroundSyncBootstrap();
-
-  if (!shouldAutoSync()) {
-    return;
-  }
-
-  const pending = scans.filter((scan) => scan.source === 'device' && scan.syncState !== 'synced');
-
-  for (const scan of pending) {
-    void syncLocalScanToCloud(scan.id);
-  }
-}
-
-ensureBackgroundSyncBootstrap();
 
 export async function fetchScans({ tab = 'all', query = '' }: FetchScansInput = {}) {
   const mergedLocal = await mergeNativeFolderModels();
@@ -1015,15 +1208,20 @@ export async function fetchScans({ tab = 'all', query = '' }: FetchScansInput = 
   let remoteScans: ScanRecord[] = [];
 
   if (getAuthToken()) {
+    remoteScans = await loadCachedRemoteScans();
+
     try {
       const response = await request('/api/scans');
       remoteScans = extractArrayPayload(response).map((scan) => mapBackendScan(scan as Record<string, any>));
+      await persistRemoteScans(remoteScans);
     } catch {
-      remoteScans = [];
+      remoteScans = await loadCachedRemoteScans();
     }
+  } else {
+    remoteScansCache = [];
+    remoteScansLoadPromise = null;
+    await writeRawRemoteScans([]);
   }
-
-  startBackgroundSync(localScans);
 
   const scans = mergeLocalAndRemoteScans(localScans, remoteScans);
   return byQuery(byTab(scans, tab), query);
@@ -1043,6 +1241,19 @@ export async function getScanById(scanId: string) {
 
   if (localMatch) {
     return localMatch;
+  }
+
+  const cachedRemoteScans = await loadCachedRemoteScans();
+  const cachedRemoteMatch = cachedRemoteScans.find((scan) => scan.id === scanId || scan.remoteId === scanId);
+
+  if (cachedRemoteMatch) {
+    return cachedRemoteMatch;
+  }
+
+  const looksLikeLocalOnlyId = scanId.startsWith('local-') || scanId.startsWith('local-native-');
+
+  if (looksLikeLocalOnlyId || !getAuthToken()) {
+    return null;
   }
 
   try {
@@ -1171,6 +1382,17 @@ export async function deleteCapturedScan(scanId: string) {
     return false;
   }
 
+  const localScans = await mergeNativeFolderModels();
+  const localMatch = localScans.find((item) => item.id === scanId || item.remoteId === scanId);
+
+  if (localMatch?.modelPath) {
+    try {
+      await deleteNativeSavedModel(localMatch.modelPath);
+    } catch {
+      return false;
+    }
+  }
+
   const removed = await removeLocalScan(scanId);
 
   if (removed?.remoteId && getAuthToken()) {
@@ -1178,6 +1400,7 @@ export async function deleteCapturedScan(scanId: string) {
       await request(`/api/scans/${encodeURIComponent(removed.remoteId)}`, {
         method: 'DELETE',
       });
+      await removeCachedRemoteScan(removed);
     } catch {
       // Keep local delete success even if remote cleanup fails.
     }
@@ -1191,6 +1414,7 @@ export async function deleteCapturedScan(scanId: string) {
     await request(`/api/scans/${encodeURIComponent(scanId)}`, {
       method: 'DELETE',
     });
+    await removeCachedRemoteScan({ id: scanId, remoteId: scanId });
     return true;
   } catch {
     return false;
@@ -1226,12 +1450,15 @@ export async function syncCapturedScan(scanId: string) {
     });
 
     const cloudScan = mapBackendScan(response as Record<string, any>);
+    const remoteModelFetchUrl = cloudScan.cloudModelUrl || cloudScan.modelUrl || cloudScan.fileDownloadUrl || '';
     const updated = await upsertLocalScan({
       ...localMatch,
       syncState: 'synced',
       storageLocation: localMatch.modelPath ? 'device' : 'cloud',
+      modelUrl: localMatch.modelPath ? localMatch.modelUrl : remoteModelFetchUrl || localMatch.modelUrl,
+      fileDownloadUrl: remoteModelFetchUrl || localMatch.fileDownloadUrl,
       cloudSyncedAt: cloudScan.cloudSyncedAt || new Date().toISOString(),
-      cloudModelUrl: cloudScan.cloudModelUrl || cloudScan.modelUrl || localMatch.cloudModelUrl,
+      cloudModelUrl: remoteModelFetchUrl || localMatch.cloudModelUrl,
       remoteId: localMatch.remoteId,
       lastSyncError: '',
     });

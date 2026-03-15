@@ -1,5 +1,6 @@
-import { Capacitor, CapacitorHttp } from '@capacitor/core';
+import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
+import { ApiRequestError, requestApi } from './apiClient';
 
 export type AuthUser = {
   id: string;
@@ -15,16 +16,6 @@ export type AuthPayload = {
   user: AuthUser;
 };
 
-export class ApiRequestError extends Error {
-  status: number;
-
-  constructor(message: string, status: number) {
-    super(message);
-    this.name = 'ApiRequestError';
-    this.status = status;
-  }
-}
-
 const AUTH_TOKEN_KEY = 'lidarpro.auth.accessToken.v1';
 const AUTH_USER_KEY = 'lidarpro.auth.user.v1';
 const AUTH_CHANGED_EVENT = 'lidarpro.auth.changed';
@@ -36,31 +27,6 @@ let authHydrationPromise: Promise<void> | null = null;
 
 function isNativeRuntime() {
   return Capacitor.isNativePlatform();
-}
-
-function resolveApiBaseUrl() {
-  const configured = String(import.meta.env.VITE_API_BASE_URL || '').trim();
-
-  if (configured) {
-    return configured.replace(/\/+$/, '');
-  }
-
-  return 'http://localhost:8080';
-}
-
-function apiUrl(pathValue: string) {
-  const base = resolveApiBaseUrl();
-  const path = String(pathValue || '').trim();
-
-  if (!path) {
-    return base;
-  }
-
-  if (/^https?:\/\//i.test(path)) {
-    return path;
-  }
-
-  return path.startsWith('/') ? `${base}${path}` : `${base}/${path}`;
 }
 
 function safeJsonParse(value: string | null) {
@@ -97,72 +63,13 @@ function normalizeAuthPayload(raw: unknown): AuthPayload {
   };
 }
 
-async function parseWebErrorMessage(response: Response) {
-  const fallback = `Request failed (${response.status})`;
-
-  try {
-    const payload = await response.json();
-    if (typeof payload?.message === 'string' && payload.message.trim()) {
-      return payload.message;
-    }
-    return fallback;
-  } catch {
-    try {
-      const text = await response.text();
-      return text.trim() || fallback;
-    } catch {
-      return fallback;
-    }
-  }
-}
-
 async function request(pathValue: string, init: RequestInit = {}, token?: string) {
-  const url = apiUrl(pathValue);
-  const method = String(init.method || 'GET').toUpperCase();
-  const headers = {
-    Accept: 'application/json',
-    'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...(init.headers || {}),
-  } as Record<string, string>;
-
-  if (isNativeRuntime()) {
-    const rawBody = init.body ? String(init.body) : '';
-    const hasBody = method !== 'GET' && method !== 'HEAD' && rawBody.length > 0;
-    const data = hasBody ? safeJsonParse(rawBody) ?? rawBody : undefined;
-
-    const response = await CapacitorHttp.request({
-      url,
-      method,
-      headers,
-      data,
-    });
-
-    if (response.status < 200 || response.status >= 300) {
-      const fallback = `Request failed (${response.status})`;
-      const message =
-        typeof response.data?.message === 'string' && response.data.message.trim()
-          ? response.data.message
-          : typeof response.data === 'string' && response.data.trim()
-            ? response.data
-            : fallback;
-
-      throw new ApiRequestError(message, response.status);
-    }
-
-    return response.status === 204 ? null : response.data;
-  }
-
-  const response = await fetch(url, {
-    ...init,
-    headers,
+  return requestApi(pathValue, {
+    method: init.method,
+    body: init.body,
+    headers: (init.headers || {}) as Record<string, string>,
+    token,
   });
-
-  if (!response.ok) {
-    throw new ApiRequestError(await parseWebErrorMessage(response), response.status);
-  }
-
-  return response.status === 204 ? null : response.json();
 }
 
 function hydrateMemoryCacheFromWebStorage() {

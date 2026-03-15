@@ -1,29 +1,54 @@
-import { useCallback, useEffect, useState } from 'react';
-import { fetchScans, type FetchScansInput, type ScanRecord } from '../services/scanService';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { fetchScans, getCachedScans, type FetchScansInput, type ScanRecord } from '../services/scanService';
 
 type UseScanLibraryResult = {
   scans: ScanRecord[];
   loading: boolean;
   error: string;
   refetch: () => Promise<void>;
+  removeScans: (scanIds: string[]) => void;
 };
 
 export function useScanLibrary({ tab = 'all', query = '' }: FetchScansInput): UseScanLibraryResult {
   const [scans, setScans] = useState<ScanRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const scansRef = useRef<ScanRecord[]>([]);
 
-  const loadScans = useCallback(async () => {
-    setLoading(true);
-    setError('');
+  useEffect(() => {
+    scansRef.current = scans;
+  }, [scans]);
+
+  const removeScans = useCallback((scanIds: string[]) => {
+    const ids = new Set(scanIds.map((value) => String(value || '').trim()).filter(Boolean));
+
+    if (!ids.size) {
+      return;
+    }
+
+    setScans((current) => current.filter((scan) => !ids.has(scan.id) && !ids.has(scan.remoteId || '')));
+  }, []);
+
+  const loadScans = useCallback(async ({ background = false }: { background?: boolean } = {}) => {
+    const shouldBlockUi = !background || scansRef.current.length === 0;
+
+    if (shouldBlockUi) {
+      setLoading(true);
+      setError('');
+    }
 
     try {
       const result = await fetchScans({ tab, query });
       setScans(result);
+      setError('');
     } catch {
-      setError('Unable to load scans right now.');
+      if (shouldBlockUi) {
+        setError('Unable to load scans right now.');
+      }
     } finally {
-      setLoading(false);
+      if (shouldBlockUi) {
+        setLoading(false);
+      }
     }
   }, [query, tab]);
 
@@ -33,6 +58,28 @@ export function useScanLibrary({ tab = 'all', query = '' }: FetchScansInput): Us
     const run = async () => {
       setLoading(true);
       setError('');
+      let hydrated = false;
+
+      try {
+        const cached = await getCachedScans({ tab, query });
+
+        if (!active) {
+          return;
+        }
+
+        setScans(cached);
+        hydrated = cached.length > 0;
+      } catch {
+        // Ignore cache hydrate failures and keep going with a full refresh.
+      } finally {
+        if (!active) {
+          return;
+        }
+
+        if (hydrated) {
+          setLoading(false);
+        }
+      }
 
       try {
         const result = await fetchScans({ tab, query });
@@ -42,12 +89,15 @@ export function useScanLibrary({ tab = 'all', query = '' }: FetchScansInput): Us
         }
 
         setScans(result);
+        setError('');
       } catch {
         if (!active) {
           return;
         }
 
-        setError('Unable to load scans right now.');
+        if (!hydrated) {
+          setError('Unable to load scans right now.');
+        }
       } finally {
         if (active) {
           setLoading(false);
@@ -64,7 +114,7 @@ export function useScanLibrary({ tab = 'all', query = '' }: FetchScansInput): Us
 
   useEffect(() => {
     const reload = () => {
-      void loadScans();
+      void loadScans({ background: true });
     };
 
     const handleVisibilityChange = () => {
@@ -89,5 +139,6 @@ export function useScanLibrary({ tab = 'all', query = '' }: FetchScansInput): Us
     loading,
     error,
     refetch: loadScans,
+    removeScans,
   };
 }

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import ScanCard from '../components/library/ScanCard';
@@ -17,16 +17,47 @@ export default function ScanLibraryPage() {
   const [activeTab, setActiveTab] = useState<(typeof tabs)[number]['key']>('all');
   const [query, setQuery] = useState('');
   const [actionById, setActionById] = useState<Record<string, boolean>>({});
-  const { scans, loading, error, refetch } = useScanLibrary({
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const { scans, loading, error, refetch, removeScans } = useScanLibrary({
     tab: activeTab,
     query,
   });
+  const deviceScans = useMemo(() => scans.filter((scan) => scan.source === 'device'), [scans]);
+  const selectedDeviceScans = useMemo(
+    () => deviceScans.filter((scan) => selectedIds.includes(scan.id)),
+    [deviceScans, selectedIds],
+  );
+  const allDeviceSelected = deviceScans.length > 0 && selectedDeviceScans.length === deviceScans.length;
+  const bulkBusy = selectedDeviceScans.some((scan) => Boolean(actionById[scan.id]));
+
+  useEffect(() => {
+    setSelectedIds((current) => current.filter((id) => scans.some((scan) => scan.id === id)));
+  }, [scans]);
 
   const setBusy = (scanId: string, busy: boolean) => {
     setActionById((current) => ({
       ...current,
       [scanId]: busy,
     }));
+  };
+
+  const toggleSelected = (scan: ScanRecord) => {
+    if (scan.source !== 'device' || actionById[scan.id]) {
+      return;
+    }
+
+    setSelectedIds((current) =>
+      current.includes(scan.id) ? current.filter((id) => id !== scan.id) : [...current, scan.id],
+    );
+  };
+
+  const handleSelectAll = () => {
+    if (allDeviceSelected) {
+      setSelectedIds([]);
+      return;
+    }
+
+    setSelectedIds(deviceScans.map((scan) => scan.id));
   };
 
   const handleDeleteScan = async (scan: ScanRecord) => {
@@ -43,10 +74,63 @@ export default function ScanLibraryPage() {
     setBusy(scan.id, true);
 
     try {
-      await deleteCapturedScan(scan.id);
-      await refetch();
+      const deleted = await deleteCapturedScan(scan.id);
+
+      if (deleted) {
+        removeScans([scan.id, scan.remoteId || '']);
+      }
     } finally {
       setBusy(scan.id, false);
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedDeviceScans.length === 0) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Delete ${selectedDeviceScans.length} selected scan${selectedDeviceScans.length === 1 ? '' : 's'} from this device?`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    const selectedSet = new Set(selectedDeviceScans.map((scan) => scan.id));
+
+    setActionById((current) => {
+      const next = { ...current };
+
+      for (const scan of selectedDeviceScans) {
+        next[scan.id] = true;
+      }
+
+      return next;
+    });
+
+    try {
+      const results = await Promise.allSettled(selectedDeviceScans.map((scan) => deleteCapturedScan(scan.id)));
+      const deletedIds = selectedDeviceScans
+        .filter((scan, index) => results[index]?.status === 'fulfilled' && results[index].value)
+        .flatMap((scan) => [scan.id, scan.remoteId || ''])
+        .filter(Boolean);
+
+      setSelectedIds((current) => current.filter((id) => !selectedSet.has(id)));
+
+      if (deletedIds.length) {
+        removeScans(deletedIds);
+      }
+    } finally {
+      setActionById((current) => {
+        const next = { ...current };
+
+        for (const scan of selectedDeviceScans) {
+          next[scan.id] = false;
+        }
+
+        return next;
+      });
     }
   };
 
@@ -140,6 +224,36 @@ export default function ScanLibraryPage() {
           </div>
         </div>
 
+        {!loading && !error && deviceScans.length > 0 ? (
+          <div className="px-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-100/70 p-3 dark:border-slate-800 dark:bg-slate-800/30">
+              <p className="text-sm text-slate-600 dark:text-slate-300">
+                {selectedDeviceScans.length > 0
+                  ? `${selectedDeviceScans.length} selected`
+                  : `${deviceScans.length} device scan${deviceScans.length === 1 ? '' : 's'} available`}
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleSelectAll}
+                  disabled={bulkBusy}
+                  className="rounded-lg border border-slate-300/90 bg-white/85 px-3 py-2 text-xs font-semibold text-slate-700 transition-colors hover:border-primary/50 hover:text-primary disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-100"
+                >
+                  {allDeviceSelected ? 'Clear Selection' : 'Select All'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteSelected}
+                  disabled={selectedDeviceScans.length === 0 || bulkBusy}
+                  className="rounded-lg border border-rose-300/60 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-500 transition-colors hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60 dark:border-rose-400/40"
+                >
+                  Delete Selected
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 lg:grid-cols-3">
           {loading ? (
             <div className="col-span-full rounded-xl border border-slate-200 bg-slate-100/50 p-6 text-center text-slate-500 dark:border-slate-800 dark:bg-slate-800/20 dark:text-slate-400">
@@ -171,6 +285,9 @@ export default function ScanLibraryPage() {
                 <ScanCard
                   key={scan.id}
                   scan={scan}
+                  selectable={scan.source === 'device'}
+                  selected={selectedIds.includes(scan.id)}
+                  onSelectToggle={toggleSelected}
                   onDelete={handleDeleteScan}
                   onSync={handleSyncScan}
                   actionBusy={Boolean(actionById[scan.id])}

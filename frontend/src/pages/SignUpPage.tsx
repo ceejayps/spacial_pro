@@ -22,8 +22,8 @@ export default function SignUpPage() {
 
     if (!fullName.trim()) {
       nextErrors.fullName = 'Full name is required.';
-    } else if (fullName.trim().length < 3) {
-      nextErrors.fullName = 'Enter your full name.';
+    } else if (fullName.trim().length < 2 || fullName.trim().length > 150) {
+      nextErrors.fullName = 'Full name must be between 2 and 150 characters.';
     }
 
     if (!email.trim()) {
@@ -36,6 +36,8 @@ export default function SignUpPage() {
       nextErrors.password = 'Password is required.';
     } else if (password.length < 8) {
       nextErrors.password = 'Password must be at least 8 characters.';
+    } else if (!/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/\d/.test(password)) {
+      nextErrors.password = 'Password must include upper, lower, and number characters.';
     }
 
     return nextErrors;
