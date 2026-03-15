@@ -702,7 +702,7 @@ export default function ScanPage() {
           <button
             type="button"
             onClick={handleCancel}
-            className="inline-flex min-w-[92px] items-center justify-center rounded-xl border border-slate-700 bg-background-dark/65 px-4 py-2 text-sm font-semibold text-slate-100 backdrop-blur hover:bg-slate-800"
+            className="inline-flex min-w-[92px] items-center justify-center rounded-xl border border-slate-700 bg-background-dark/65 px-4 py-2 text-sm font-semibold text-slate-100 hover:bg-slate-800"
           >
             Cancel
           </button>
@@ -725,7 +725,7 @@ export default function ScanPage() {
         </header>
 
         <div className="px-6">
-          <div className="relative rounded-3xl border border-slate-800/80 bg-background-dark/35 backdrop-blur-sm" style={{ minHeight: '62vh' }}>
+          <div className="relative rounded-3xl border border-slate-800/80 bg-background-dark/35" style={{ minHeight: '62vh' }}>
             <div className="absolute left-[22px] top-[22px]">
               <span
                 className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
@@ -746,14 +746,14 @@ export default function ScanPage() {
             </div>
 
             <div className="absolute bottom-5 left-1/2 flex -translate-x-1/2 flex-col items-center gap-3">
-              <div className="rounded-full border border-slate-800 bg-background-dark/55 px-6 py-2 text-sm text-slate-200 backdrop-blur-sm">
+              <div className="rounded-full border border-slate-800 bg-background-dark/55 px-6 py-2 text-sm text-slate-200">
                 {isScanning ? 'Move device slowly to capture more detail' : 'Tap Start Scan to begin AR capture'}
               </div>
               <div className="flex items-center justify-center gap-10">
                 <button
                   type="button"
                   onClick={() => setShowScanSettings((current) => !current)}
-                  className={`flex size-12 shrink-0 items-center justify-center rounded-full border backdrop-blur-md transition-colors ${
+                  className={`flex size-12 shrink-0 items-center justify-center rounded-full border transition-colors ${
                     showScanSettings
                       ? 'border-primary/60 bg-primary/20 text-primary'
                       : 'border-slate-700 bg-background-dark/60 text-slate-300 hover:text-white'
@@ -765,7 +765,7 @@ export default function ScanPage() {
                 <button
                   type="button"
                   onClick={handleRecordToggle}
-                  className="group relative flex size-24 shrink-0 items-center justify-center rounded-full border-4 border-white bg-white/10 backdrop-blur-md"
+                  className="group relative flex size-24 shrink-0 items-center justify-center rounded-full border-4 border-white bg-white/10"
                 >
                   <div
                     className={`size-16 rounded-full shadow-[0_0_20px_rgba(239,68,68,0.5)] transition-transform group-active:scale-90 ${
@@ -780,7 +780,7 @@ export default function ScanPage() {
                 <button
                   type="button"
                   onClick={() => setShowAiOverlay((current) => !current)}
-                  className={`flex size-12 shrink-0 items-center justify-center rounded-full border backdrop-blur-md transition-colors ${
+                  className={`flex size-12 shrink-0 items-center justify-center rounded-full border transition-colors ${
                     showAiOverlay
                       ? 'border-emerald-400/70 bg-emerald-500/20 text-emerald-300'
                       : 'border-slate-700 bg-background-dark/60 text-slate-300 hover:text-white'
@@ -818,7 +818,7 @@ export default function ScanPage() {
         ) : null}
 
         <section className="mx-6 mt-4 grid items-center gap-3 lg:grid-cols-[1fr_auto]">
-          <div className="rounded-2xl border border-slate-800 bg-background-dark/55 p-4 backdrop-blur-sm">
+          <div className="rounded-2xl border border-slate-800 bg-background-dark/55 p-4">
             <p className="text-sm font-bold text-white">Scan Settings</p>
             <p className="mt-1 text-sm text-slate-400">
               Range: {scanDistanceMeters.toFixed(1)}m • Detail: {scanDetailLevel.charAt(0).toUpperCase()}
@@ -835,7 +835,7 @@ export default function ScanPage() {
             <button
               type="button"
               onClick={() => setShowAiOverlay((current) => !current)}
-              className="rounded-xl border border-slate-700 bg-background-dark/55 px-4 py-3 text-sm font-semibold text-slate-100 backdrop-blur-sm hover:border-primary/50"
+              className="rounded-xl border border-slate-700 bg-background-dark/55 px-4 py-3 text-sm font-semibold text-slate-100 hover:border-primary/50"
             >
               AI Overlay
             </button>
@@ -843,7 +843,7 @@ export default function ScanPage() {
               type="button"
               disabled={!readModeSupported}
               onClick={() => setReadModeEnabled((current) => !current)}
-              className="rounded-xl border border-slate-700 bg-background-dark/55 px-4 py-3 text-sm font-semibold text-slate-100 backdrop-blur-sm hover:border-primary/50 disabled:opacity-50"
+              className="rounded-xl border border-slate-700 bg-background-dark/55 px-4 py-3 text-sm font-semibold text-slate-100 hover:border-primary/50 disabled:opacity-50"
             >
               Read Mode
             </button>
