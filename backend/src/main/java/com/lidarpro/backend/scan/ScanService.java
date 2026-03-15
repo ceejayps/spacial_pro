@@ -27,7 +27,7 @@ import org.springframework.web.multipart.MultipartFile;
 public class ScanService {
 
     private static final Set<String> ALLOWED_MODEL_EXTENSIONS = new HashSet<>(
-        Arrays.asList("glb", "gltf", "obj", "stl", "ply", "usdz")
+        Arrays.asList("glb", "gltf", "obj")
     );
     private static final int MAX_METADATA_JSON_CHARS = 1_000_000;
 
@@ -51,6 +51,8 @@ public class ScanService {
     public ScanResponse create(UUID ownerUserId, MultipartFile file, String metadataJson) {
         validateIncomingModelFile(file);
         CreateScanMetadataRequest metadata = parseCreateMetadata(metadataJson);
+        String actualModelFormat = inferModelFormat(file.getOriginalFilename());
+        validateRequestedModelFormat(metadata.getModelFormat(), actualModelFormat);
 
         String namespace = StringUtils.hasText(metadata.getTitle()) ? metadata.getTitle() : "scan";
         StoredObject stored = binaryStorageService.save(file, namespace);
@@ -63,7 +65,7 @@ public class ScanService {
         entity.setSource(defaultString(metadata.getSource(), "device"));
         entity.setStorageLocation(defaultString(metadata.getStorageLocation(), "device"));
         entity.setArEngine(defaultString(metadata.getArEngine(), "unknown"));
-        entity.setModelFormat(defaultModelFormat(metadata.getModelFormat(), stored.originalFilename()));
+        entity.setModelFormat(actualModelFormat);
 
         entity.setStoragePath(stored.storagePath());
         entity.setOriginalFilename(stored.originalFilename());
@@ -208,7 +210,7 @@ public class ScanService {
     }
 
     private ScanResponse toResponse(ScanEntity entity) {
-        String fileUrl = "%s/%s/file".formatted(storageProperties.getPublicBaseUrl(), entity.getId());
+        String fileUrl = buildFileUrl(entity.getId());
         String modelUrl = StringUtils.hasText(entity.getCloudModelUrl()) ? entity.getCloudModelUrl() : fileUrl;
 
         return new ScanResponse(
@@ -291,16 +293,14 @@ public class ScanService {
         return "Scan %s (%s)".formatted(filename, Instant.now());
     }
 
-    private String defaultModelFormat(String explicit, String filename) {
-        if (StringUtils.hasText(explicit)) {
-            return explicit.trim().toLowerCase(Locale.ROOT);
+    private String inferModelFormat(String filename) {
+        if (!StringUtils.hasText(filename)) {
+            return "glb";
         }
 
-        if (StringUtils.hasText(filename)) {
-            int idx = filename.lastIndexOf('.');
-            if (idx > -1 && idx < filename.length() - 1) {
-                return filename.substring(idx + 1).toLowerCase(Locale.ROOT);
-            }
+        int idx = filename.lastIndexOf('.');
+        if (idx > -1 && idx < filename.length() - 1) {
+            return filename.substring(idx + 1).toLowerCase(Locale.ROOT);
         }
 
         return "glb";
@@ -308,6 +308,33 @@ public class ScanService {
 
     private String defaultString(String value, String fallback) {
         return StringUtils.hasText(value) ? value.trim() : fallback;
+    }
+
+    private void validateRequestedModelFormat(String requestedFormat, String actualFormat) {
+        if (!StringUtils.hasText(requestedFormat)) {
+            return;
+        }
+
+        String normalizedRequested = requestedFormat.trim().toLowerCase(Locale.ROOT);
+        if (!normalizedRequested.equals(actualFormat)) {
+            throw new IllegalArgumentException("metadata modelFormat must match the uploaded file extension.");
+        }
+    }
+
+    private String buildFileUrl(UUID scanId) {
+        String baseUrl = StringUtils.hasText(storageProperties.getPublicBaseUrl())
+            ? storageProperties.getPublicBaseUrl().trim()
+            : "/api/scans";
+
+        if (baseUrl.endsWith("/")) {
+            baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
+        }
+
+        if (baseUrl.matches("^https?://[^/]+$")) {
+            baseUrl = baseUrl + "/api/scans";
+        }
+
+        return "%s/%s/file".formatted(baseUrl, scanId);
     }
 
     private void validateIncomingModelFile(MultipartFile file) {
