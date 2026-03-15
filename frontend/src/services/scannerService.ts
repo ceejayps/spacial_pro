@@ -16,6 +16,7 @@ const NO_LIDAR_MESSAGE = 'No LiDAR on device.';
 
 let webStream: MediaStream | null = null;
 let nativePreviewRunning = false;
+let nativePreviewProvider: 'lidar' | 'camera-preview' | null = null;
 const previewAny = CameraPreview as unknown as {
   start?: (options: Record<string, unknown>) => Promise<void>;
   stop?: () => Promise<void>;
@@ -65,6 +66,10 @@ function getEngineForPlatform(platform: string) {
   }
 
   return 'Web Mock';
+}
+
+function shouldUseCameraPreviewOnNative() {
+  return getPlatform() === 'ios' && typeof previewAny.start === 'function';
 }
 
 function normalizeNativeLidarError(error: unknown, fallbackMessage: string) {
@@ -224,12 +229,32 @@ export async function startCameraPreview({
     return startWebCameraStream(webVideoElement);
   }
 
+  if (shouldUseCameraPreviewOnNative()) {
+    await previewAny.start?.({
+      parent: parentId,
+      className: 'native-camera-layer',
+      position: 'rear',
+      toBack: true,
+      disableAudio: true,
+      enableZoom: true,
+      width: window.innerWidth,
+      height: window.innerHeight,
+    });
+
+    nativePreviewProvider = 'camera-preview';
+    nativePreviewRunning = true;
+    setNativePreviewCss(true);
+
+    return { mode: 'native' as const };
+  }
+
   if (!hasNativeLidarPlugin()) {
     throw new Error(NO_LIDAR_MESSAGE);
   }
 
   try {
     await LidarScanner.startPreview();
+    nativePreviewProvider = 'lidar';
   } catch (error) {
     if (typeof previewAny.start !== 'function') {
       throw normalizeNativeLidarError(error, 'Failed to start native preview.');
@@ -245,6 +270,8 @@ export async function startCameraPreview({
       width: window.innerWidth,
       height: window.innerHeight,
     });
+
+    nativePreviewProvider = 'camera-preview';
   }
 
   nativePreviewRunning = true;
@@ -268,13 +295,16 @@ export async function stopCameraPreview({ webVideoElement }: { webVideoElement?:
   }
 
   try {
-    if (hasNativeLidarPlugin()) {
+    if (nativePreviewProvider === 'camera-preview' && typeof previewAny.stop === 'function') {
+      await previewAny.stop();
+    } else if (nativePreviewProvider === 'lidar' && hasNativeLidarPlugin()) {
       await LidarScanner.stopPreview();
     } else if (typeof previewAny.stop === 'function') {
       await previewAny.stop();
     }
   } finally {
     nativePreviewRunning = false;
+    nativePreviewProvider = null;
     setNativePreviewCss(false);
   }
 }
