@@ -1,6 +1,6 @@
-# LiDAR Pro
+# Spacial Pro
 
-LiDAR Pro is a full-stack 3D scanning app:
+Spacial Pro is a full-stack 3D scanning app:
 - `frontend/`: React + Vite + Capacitor app (web, iOS, Android)
 - `backend/`: Spring Boot API (auth, user profile, scan metadata, model upload/stream)
 
