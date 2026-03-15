@@ -76,6 +76,13 @@ type NativeSavedModel = {
 const RECENT_LIMIT = 2;
 const AUTO_SYNC_INTERVAL_MS = 15_000;
 const LOCAL_SCANS_KEY = 'lidarpro.scans.local.v1';
+const LEGACY_LOCAL_SCANS_KEYS = [
+  LOCAL_SCANS_KEY,
+  'lidarpro.scans.local',
+  'lidarpro.models.local.v1',
+  'spacialpro.scans.local.v1',
+  'spacial-pro.scans.local.v1',
+];
 const DEFAULT_CAPTURE_THUMBNAIL =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuCCjW0KBlGYx93IdgjzBNlzXyV254j3H6gT_QM_UZbpq8VRNOQMzigApr1_uNiHmNPbrWp1w5jLOtw6isCxyiHlv6x0DYny_s7d5v8CMhPvjBoCisX-j24ZC4BoNaA_hglqVW4z2gdAxyAfh0zpyOqzZ6LjGWUxg5i0jZN0lWh3h4dS4TVqOsUD4aPnzYCS9RVdKIT2vorb20aElEwcvOvm8XuGEvceBX0mDhg5DWT-ZuUCDZzoMoaEorzkNUR3FLgs-uhiC32jMg';
 
@@ -454,14 +461,40 @@ function serializeJson(value: unknown) {
   }
 }
 
-function parseJsonArray(value: string | null | undefined) {
+function extractArrayPayload(value: unknown) {
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  if (!value || typeof value !== 'object') {
+    return [];
+  }
+
+  const record = value as Record<string, unknown>;
+
+  if (Array.isArray(record.scans)) {
+    return record.scans;
+  }
+
+  if (Array.isArray(record.items)) {
+    return record.items;
+  }
+
+  if (Array.isArray(record.models)) {
+    return record.models;
+  }
+
+  return [];
+}
+
+function parseJsonCollection(value: string | null | undefined) {
   if (!value) {
     return [];
   }
 
   try {
     const parsed = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed : [];
+    return extractArrayPayload(parsed);
   } catch {
     return [];
   }
@@ -470,8 +503,16 @@ function parseJsonArray(value: string | null | undefined) {
 async function readRawLocalScans() {
   if (isNativeRuntime()) {
     try {
-      const result = await Preferences.get({ key: LOCAL_SCANS_KEY });
-      return parseJsonArray(result.value);
+      for (const key of LEGACY_LOCAL_SCANS_KEYS) {
+        const result = await Preferences.get({ key });
+        const parsed = parseJsonCollection(result.value);
+
+        if (parsed.length) {
+          return parsed;
+        }
+      }
+
+      return [];
     } catch {
       return [];
     }
@@ -482,7 +523,15 @@ async function readRawLocalScans() {
   }
 
   try {
-    return parseJsonArray(window.localStorage.getItem(LOCAL_SCANS_KEY));
+    for (const key of LEGACY_LOCAL_SCANS_KEYS) {
+      const parsed = parseJsonCollection(window.localStorage.getItem(key));
+
+      if (parsed.length) {
+        return parsed;
+      }
+    }
+
+    return [];
   } catch {
     return [];
   }
@@ -825,7 +874,7 @@ async function syncLocalScanToCloud(scanId: string) {
       ...record,
       remoteId: remoteScan.id,
       syncState: 'synced',
-      storageLocation: 'cloud',
+      storageLocation: record.modelPath ? 'device' : 'cloud',
       cloudSyncedAt: new Date().toISOString(),
       cloudModelUrl: remoteScan.cloudModelUrl || remoteScan.modelUrl || '',
       lastSyncError: '',
@@ -968,7 +1017,7 @@ export async function fetchScans({ tab = 'all', query = '' }: FetchScansInput = 
   if (getAuthToken()) {
     try {
       const response = await request('/api/scans');
-      remoteScans = Array.isArray(response) ? response.map((scan) => mapBackendScan(scan)) : [];
+      remoteScans = extractArrayPayload(response).map((scan) => mapBackendScan(scan as Record<string, any>));
     } catch {
       remoteScans = [];
     }
@@ -1061,10 +1110,6 @@ export async function createCapturedScan({
     contentType: defaultContentType(format),
     uploadMetadata: metadata,
   });
-
-  if (localScan && getAuthToken()) {
-    void syncLocalScanToCloud(localScan.id);
-  }
 
   return localScan;
 }
@@ -1184,7 +1229,7 @@ export async function syncCapturedScan(scanId: string) {
     const updated = await upsertLocalScan({
       ...localMatch,
       syncState: 'synced',
-      storageLocation: 'cloud',
+      storageLocation: localMatch.modelPath ? 'device' : 'cloud',
       cloudSyncedAt: cloudScan.cloudSyncedAt || new Date().toISOString(),
       cloudModelUrl: cloudScan.cloudModelUrl || cloudScan.modelUrl || localMatch.cloudModelUrl,
       remoteId: localMatch.remoteId,

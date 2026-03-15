@@ -31,12 +31,9 @@ app:
     provider: ${APP_STORAGE_PROVIDER:local}
     root-dir: ${APP_STORAGE_ROOT_DIR:./data/models}
     public-base-url: ${APP_STORAGE_PUBLIC_BASE_URL:/api/scans}
-    r2-endpoint: ${APP_STORAGE_R2_ENDPOINT:}
-    r2-account-id: ${APP_STORAGE_R2_ACCOUNT_ID:}
-    r2-bucket: ${APP_STORAGE_R2_BUCKET:}
-    r2-access-key-id: ${APP_STORAGE_R2_ACCESS_KEY_ID:}
-    r2-secret-access-key: ${APP_STORAGE_R2_SECRET_ACCESS_KEY:}
-    r2-region: ${APP_STORAGE_R2_REGION:}
+    firebase-bucket: ${APP_STORAGE_FIREBASE_BUCKET:}
+    firebase-project-id: ${APP_STORAGE_FIREBASE_PROJECT_ID:}
+    firebase-credentials-path: ${APP_STORAGE_FIREBASE_CREDENTIALS_PATH:}
 
 server:
   port: ${SERVER_PORT:8080}

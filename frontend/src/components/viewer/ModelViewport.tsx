@@ -37,6 +37,7 @@ export type ModelViewportApi = {
 
 type ModelViewportProps = {
   modelUrl?: string | null;
+  modelUrlCandidates?: string[];
   modelFormat?: string | null;
   viewMode?: ModelViewportDisplayMode;
   uvTextureEnabled?: boolean;
@@ -333,6 +334,7 @@ const MAX_MEASURE_FEET = 20;
 
 export default function ModelViewport({
   modelUrl,
+  modelUrlCandidates = [],
   modelFormat,
   viewMode = 'textured',
   uvTextureEnabled = false,
@@ -695,14 +697,27 @@ export default function ModelViewport({
       setError('');
 
       try {
-        const format = inferFormat(modelUrl, modelFormat);
+        const urlCandidates = [...new Set([modelUrl, ...modelUrlCandidates].map((value) => String(value || '').trim()).filter(Boolean))];
         let object3d: THREE.Object3D | null = null;
+        let lastLoadError: unknown = null;
 
-        if (modelUrl) {
-          object3d = format === 'glb' || format === 'gltf' ? await loadWithGLTF(modelUrl) : await loadWithOBJ(modelUrl);
+        for (const candidate of urlCandidates) {
+          const format = inferFormat(candidate, modelFormat);
+
+          try {
+            object3d =
+              format === 'glb' || format === 'gltf' ? await loadWithGLTF(candidate) : await loadWithOBJ(candidate);
+            break;
+          } catch (candidateLoadError) {
+            lastLoadError = candidateLoadError;
+          }
         }
 
         if (!object3d) {
+          if (lastLoadError) {
+            throw lastLoadError;
+          }
+
           object3d = buildFallbackMesh();
         }
 
@@ -777,7 +792,7 @@ export default function ModelViewport({
         mount.removeChild(renderer.domElement);
       }
     };
-  }, [modelFormat, modelUrl]);
+  }, [modelFormat, modelUrl, modelUrlCandidates]);
 
   useEffect(() => {
     const runtime = runtimeRef.current;

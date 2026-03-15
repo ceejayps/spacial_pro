@@ -62,6 +62,28 @@ export function useScanLibrary({ tab = 'all', query = '' }: FetchScansInput): Us
     };
   }, [query, tab]);
 
+  useEffect(() => {
+    const reload = () => {
+      void loadScans();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        reload();
+      }
+    };
+
+    window.addEventListener('focus', reload);
+    window.addEventListener('pageshow', reload);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('focus', reload);
+      window.removeEventListener('pageshow', reload);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [loadScans]);
+
   return {
     scans,
     loading,

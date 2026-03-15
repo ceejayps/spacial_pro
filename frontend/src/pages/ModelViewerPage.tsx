@@ -140,6 +140,19 @@ export default function ModelViewerPage() {
     setAnnotations(Array.isArray(scan?.annotations) ? scan.annotations : []);
   }, [scan?.annotations, scan?.id]);
 
+  const modelUrlCandidates = useMemo(() => {
+    if (!scan) {
+      return [];
+    }
+
+    const preferLocal = Boolean(String(scan.modelPath || '').trim());
+    const orderedCandidates = preferLocal
+      ? [scan.modelUrl, scan.fileDownloadUrl, scan.cloudModelUrl]
+      : [scan.cloudModelUrl, scan.fileDownloadUrl, scan.modelUrl];
+
+    return [...new Set(orderedCandidates.map((value) => String(value || '').trim()).filter(Boolean))];
+  }, [scan]);
+
   const persistAnnotations = useCallback(
     async (nextAnnotations: ScanAnnotation[]) => {
       if (!scan?.id) {
@@ -348,6 +361,7 @@ export default function ModelViewerPage() {
       <main className="relative flex-1 overflow-hidden bg-slate-900">
         <ModelViewport
           modelUrl={scan?.modelUrl}
+          modelUrlCandidates={modelUrlCandidates}
           modelFormat={scan?.modelFormat}
           viewMode={viewMode}
           uvTextureEnabled={uvTextureEnabled}

@@ -1,13 +1,14 @@
 import { NavLink } from 'react-router-dom';
+import { useAuth } from '../../auth/AuthContext';
 
 const navItems = [
   { label: 'Home', icon: 'home', to: '/library' },
   { label: 'Scanner', icon: 'view_in_ar', to: '/scan' },
   { label: 'Library', icon: 'folder', to: '/library' },
-  { label: 'Profile', icon: 'person', to: '/library' },
 ];
 
 export default function BottomNav({ fixed = false }: { fixed?: boolean }) {
+  const { signOut } = useAuth();
   const wrapperPosition = fixed ? 'fixed bottom-0 left-0 right-0' : '';
 
   return (
@@ -33,6 +34,14 @@ export default function BottomNav({ fixed = false }: { fixed?: boolean }) {
           <span className="text-[10px] font-bold uppercase tracking-wider">{item.label}</span>
         </NavLink>
       ))}
+      <button
+        type="button"
+        onClick={signOut}
+        className="flex flex-1 flex-col items-center justify-center gap-1 text-slate-400 transition-colors hover:text-white"
+      >
+        <span className="material-symbols-outlined">logout</span>
+        <span className="text-[10px] font-bold uppercase tracking-wider">Logout</span>
+      </button>
     </div>
   );
 }
