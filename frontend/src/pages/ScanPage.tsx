@@ -708,7 +708,7 @@ export default function ScanPage() {
           </button>
 
           <div className="text-center">
-            <h1 className="text-lg font-bold leading-tight">LiDAR Scanner Pro</h1>
+            <h1 className="text-lg font-bold leading-tight">Spacial Pro Scanner</h1>
             <p className="mt-1 text-[11px] uppercase tracking-wider text-slate-300">
               {arEngine} • {previewMode === 'native' ? 'Live Preview' : previewMode === 'web' ? 'Web Preview' : 'Preview'}
             </p>
