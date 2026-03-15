@@ -725,7 +725,7 @@ export default function ScanPage() {
         </header>
 
         <div className="px-6">
-          <div className="relative rounded-3xl border border-slate-800/80 bg-background-dark/35" style={{ minHeight: '62vh' }}>
+          <div className="relative rounded-3xl" style={{ minHeight: '62vh' }}>
             <div className="absolute left-[22px] top-[22px]">
               <span
                 className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
