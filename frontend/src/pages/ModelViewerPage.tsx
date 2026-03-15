@@ -265,6 +265,26 @@ export default function ModelViewerPage() {
     setEditStatus('All meshes are now visible.');
   }, []);
 
+  const handleExport = useCallback(async () => {
+    if (!scan) {
+      setExportMessage('Scan is not available yet.');
+      return;
+    }
+
+    setExportBusy(true);
+    setExportMessage('');
+
+    try {
+      await exportModelToFiles(scan);
+      setExportMessage(`${getExportActionLabel()} started.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to export this scan right now.';
+      setExportMessage(message);
+    } finally {
+      setExportBusy(false);
+    }
+  }, [scan]);
+
   const title = scan?.title || 'Captured Scan';
   const capturedAt = scan?.capturedAt || 'Recently captured';
   const vertices = Number(scan?.vertexCount || 0);
