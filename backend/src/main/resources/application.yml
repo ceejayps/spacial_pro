@@ -3,27 +3,28 @@ spring:
     exclude:
       - org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:lidar_pro}}
-    username: ${SPRING_DATASOURCE_USERNAME:${DB_USER:postgres}}
-    password: ${SPRING_DATASOURCE_PASSWORD:${DB_PASSWORD:postgres}}
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:lidarpro}
+    driver-class-name: org.postgresql.Driver
+    username: ${DB_USER:lidarpro}
+    password: ${DB_PASSWORD:lidarpro}
   jpa:
     hibernate:
-      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:update}
-    open-in-view: ${SPRING_JPA_OPEN_IN_VIEW:false}
+      ddl-auto: update
+    open-in-view: false
   servlet:
     multipart:
-      max-file-size: ${SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE:750MB}
-      max-request-size: ${SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE:800MB}
+      max-file-size: 750MB
+      max-request-size: 800MB
 
 management:
   endpoints:
     web:
       exposure:
-        include: ${MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE:health,info}
+        include: health,info
 
 app:
   auth:
-    jwt-secret: ${APP_AUTH_JWT_SECRET:change-me-change-me-change-me-change-me}
+    jwt-secret: ${APP_AUTH_JWT_SECRET:dev-secret-change-this-dev-secret-change-this}
     access-token-minutes: ${APP_AUTH_ACCESS_TOKEN_MINUTES:120}
     jwt-issuer: ${APP_AUTH_JWT_ISSUER:lidarpro-backend}
     jwt-audience: ${APP_AUTH_JWT_AUDIENCE:lidarpro-mobile-app}
@@ -31,9 +32,15 @@ app:
     provider: ${APP_STORAGE_PROVIDER:local}
     root-dir: ${APP_STORAGE_ROOT_DIR:./data/models}
     public-base-url: ${APP_STORAGE_PUBLIC_BASE_URL:/api/scans}
-    firebase-bucket: ${APP_STORAGE_FIREBASE_BUCKET:}
+    firebase-api-key: ${APP_STORAGE_FIREBASE_API_KEY:}
+    firebase-auth-domain: ${APP_STORAGE_FIREBASE_AUTH_DOMAIN:}
     firebase-project-id: ${APP_STORAGE_FIREBASE_PROJECT_ID:}
-    firebase-credentials-path: ${APP_STORAGE_FIREBASE_CREDENTIALS_PATH:}
+    firebase-bucket: ${APP_STORAGE_FIREBASE_BUCKET:}
+    firebase-messaging-sender-id: ${APP_STORAGE_FIREBASE_MESSAGING_SENDER_ID:}
+    firebase-app-id: ${APP_STORAGE_FIREBASE_APP_ID:}
+    firebase-credentials-json: ${APP_STORAGE_FIREBASE_CREDENTIALS_JSON:}
+    firebase-credentials-base64: ${APP_STORAGE_FIREBASE_CREDENTIALS_BASE64:}
+    firebase-credentials-file: ${APP_STORAGE_FIREBASE_CREDENTIALS_FILE:}
 
 server:
   port: ${SERVER_PORT:8080}

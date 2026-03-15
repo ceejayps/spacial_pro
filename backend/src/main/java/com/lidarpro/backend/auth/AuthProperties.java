@@ -9,6 +9,9 @@ public class AuthProperties {
     private long accessTokenMinutes = 120;
     private String jwtIssuer = "lidarpro-backend";
     private String jwtAudience = "lidarpro-mobile-app";
+    private int maxAttemptsPerWindow = 10;
+    private int attemptWindowMinutes = 10;
+    private int lockMinutes = 15;
 
     public String getJwtSecret() {
         return jwtSecret;
@@ -41,5 +44,28 @@ public class AuthProperties {
     public void setJwtAudience(String jwtAudience) {
         this.jwtAudience = jwtAudience;
     }
-}
 
+    public int getMaxAttemptsPerWindow() {
+        return maxAttemptsPerWindow;
+    }
+
+    public void setMaxAttemptsPerWindow(int maxAttemptsPerWindow) {
+        this.maxAttemptsPerWindow = maxAttemptsPerWindow;
+    }
+
+    public int getAttemptWindowMinutes() {
+        return attemptWindowMinutes;
+    }
+
+    public void setAttemptWindowMinutes(int attemptWindowMinutes) {
+        this.attemptWindowMinutes = attemptWindowMinutes;
+    }
+
+    public int getLockMinutes() {
+        return lockMinutes;
+    }
+
+    public void setLockMinutes(int lockMinutes) {
+        this.lockMinutes = lockMinutes;
+    }
+}

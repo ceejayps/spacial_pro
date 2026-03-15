@@ -1,4 +1,4 @@
-# Spacial Pro Backend
+# LiDAR Pro Backend
 
 Spring Boot API for authentication, user profile, scan metadata, model upload, and model file delivery.
 
@@ -6,69 +6,57 @@ Spring Boot API for authentication, user profile, scan metadata, model upload, a
 - Java 17
 - Spring Boot 3.3.x
 - Spring Web + Validation
-- Spring Data JPA
-- Spring Security
+- Spring Data JPA (Hibernate)
 - PostgreSQL
-- Local filesystem or Firebase Storage
+- Storage adapters:
+  - Local filesystem
+  - Firebase Storage
 
-## Features
-- JWT auth: register, login, me, profile update
-- Per-user ownership on all scan reads and mutations
-- Multipart scan upload with metadata JSON
-- Scan list, get, patch, sync, delete, and file download
-- Consistent JSON error responses
-- Health endpoints at `/api/health` and `/actuator/health`
+## Main Features
+- JWT auth (`register`, `login`, `me`)
+- Per-user data isolation (users can only access their own models/metadata)
+- Scan metadata CRUD
+- Multipart model upload + model download streaming
+- Health endpoints
 
-## Project Layout
-- `src/main/java/com/lidarpro/backend/auth`
-- `src/main/java/com/lidarpro/backend/security`
-- `src/main/java/com/lidarpro/backend/scan`
-- `src/main/java/com/lidarpro/backend/storage`
-- `src/main/java/com/lidarpro/backend/common`
-- `src/main/resources/application.yml`
+## Project Structure
+- `src/main/java/com/lidarpro/backend/auth`: auth requests/responses/services
+- `src/main/java/com/lidarpro/backend/security`: JWT + security filters/config
+- `src/main/java/com/lidarpro/backend/scan`: scan entity/repository/controller/service
+- `src/main/java/com/lidarpro/backend/config`: app/storage config
+- `src/main/resources/application.yml`: runtime configuration
 
-## Local Run
-
-### Prerequisites
+## Prerequisites
 - Java 17+
 - Maven 3.9+
-- Docker Desktop or another Docker runtime for the local Postgres container
+- PostgreSQL (local container, Supabase, or managed DB)
 
-### 1. Configure environment
-From `backend/`, create a local env file from the template.
+## Local Setup
 
-PowerShell:
-```powershell
-Copy-Item .env.example .env
-```
-
-POSIX shell:
+### 1) Configure environment
 ```bash
+cd backend
 cp .env.example .env
 ```
+Set required values in `.env`.
 
-Minimum values to set in `.env`:
-- `APP_AUTH_JWT_SECRET`
-- Either `SPRING_DATASOURCE_URL` or the `DB_*` variables used by your runtime shell
-- `APP_STORAGE_PROVIDER=local`
-- `APP_STORAGE_ROOT_DIR=./data/storage`
-- `APP_STORAGE_PUBLIC_BASE_URL=http://localhost:8080/api/scans`
-
-### 2. Start local Postgres
+### 2) Start local Postgres (optional)
 ```bash
 docker compose up -d
 ```
 
-The bundled compose file exposes Postgres on `localhost:5432`.
-
-### 3. Run the backend
+### 3) Run backend
 ```bash
 mvn spring-boot:run
 ```
 
-The app listens on `http://localhost:8080` unless `SERVER_PORT` is overridden.
+Default port: `8080`
 
-## Environment
+## Health Checks
+- `GET /api/health`
+- `GET /actuator/health`
+
+## Environment Variables
 
 ### Database
 - `DB_HOST`
@@ -76,44 +64,52 @@ The app listens on `http://localhost:8080` unless `SERVER_PORT` is overridden.
 - `DB_NAME`
 - `DB_USER`
 - `DB_PASSWORD`
+
+Optional explicit datasource override:
 - `SPRING_DATASOURCE_URL`
 - `SPRING_DATASOURCE_USERNAME`
 - `SPRING_DATASOURCE_PASSWORD`
 
-### Server
-- `SERVER_PORT`
+For Supabase pooler, use SSL in URL, for example:
+`jdbc:postgresql://<pooler-host>:5432/postgres?sslmode=require`
 
-### Auth
+### Server
+- `SERVER_PORT` (default `8080`)
+
+### Storage
+- `APP_STORAGE_PROVIDER` (`local` or `firebase`)
+- `APP_STORAGE_ROOT_DIR` (local storage path)
+- `APP_STORAGE_PUBLIC_BASE_URL`
+
+Firebase settings:
+- `APP_STORAGE_FIREBASE_API_KEY`
+- `APP_STORAGE_FIREBASE_AUTH_DOMAIN`
+- `APP_STORAGE_FIREBASE_PROJECT_ID`
+- `APP_STORAGE_FIREBASE_BUCKET`
+- `APP_STORAGE_FIREBASE_MESSAGING_SENDER_ID`
+- `APP_STORAGE_FIREBASE_APP_ID`
+- `APP_STORAGE_FIREBASE_CREDENTIALS_JSON`, `APP_STORAGE_FIREBASE_CREDENTIALS_BASE64`, or `APP_STORAGE_FIREBASE_CREDENTIALS_FILE`
+
+The backend upload path uses Google service credentials. Frontend Firebase config alone is not sufficient for server-side writes.
+
+### Auth / JWT
 - `APP_AUTH_JWT_SECRET`
 - `APP_AUTH_ACCESS_TOKEN_MINUTES`
 - `APP_AUTH_JWT_ISSUER`
 - `APP_AUTH_JWT_AUDIENCE`
 
-### Storage
-- `APP_STORAGE_PROVIDER`
-- `APP_STORAGE_ROOT_DIR`
-- `APP_STORAGE_PUBLIC_BASE_URL`
-- `APP_STORAGE_FIREBASE_BUCKET`
-- `APP_STORAGE_FIREBASE_PROJECT_ID`
-- `APP_STORAGE_FIREBASE_CREDENTIALS_PATH`
+## API Summary
 
-When `APP_STORAGE_PROVIDER=firebase`, the backend writes files to the configured Firebase Storage bucket by using Google application default credentials or the service-account JSON file at `APP_STORAGE_FIREBASE_CREDENTIALS_PATH`.
+Base path: `/api`
 
-For Supabase or another managed Postgres provider, prefer setting `SPRING_DATASOURCE_URL` directly. Example:
-`jdbc:postgresql://<host>:5432/postgres?sslmode=require`
-
-## API Surface
-
-### Public
-- `GET /api/health`
+### Auth
 - `POST /api/auth/register`
 - `POST /api/auth/login`
-- `GET /actuator/health`
-
-### Authenticated
 - `GET /api/auth/me`
 - `PATCH /api/auth/me`
-- `POST /api/scans`
+
+### Scans (JWT required)
+- `POST /api/scans` (multipart upload)
 - `GET /api/scans`
 - `GET /api/scans/{id}`
 - `PATCH /api/scans/{id}`
@@ -121,29 +117,7 @@ For Supabase or another managed Postgres provider, prefer setting `SPRING_DATASO
 - `DELETE /api/scans/{id}`
 - `GET /api/scans/{id}/file`
 
-## Sample Checks
-
-Register:
-```bash
-curl -X POST http://localhost:8080/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"email":"demo@example.com","fullName":"Demo User","password":"ChangeMe123!"}'
-```
-
-Login:
-```bash
-curl -X POST http://localhost:8080/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"demo@example.com","password":"ChangeMe123!"}'
-```
-
-Get current user:
-```bash
-curl http://localhost:8080/api/auth/me \
-  -H "Authorization: Bearer <access-token>"
-```
-
-Upload a scan:
+## Upload Example
 ```bash
 curl -X POST http://localhost:8080/api/scans \
   -H "Authorization: Bearer <access-token>" \
@@ -151,55 +125,45 @@ curl -X POST http://localhost:8080/api/scans \
   -F 'metadata={"title":"Living Room","modelFormat":"glb","status":"processed"}'
 ```
 
-List scans:
-```bash
-curl http://localhost:8080/api/scans \
-  -H "Authorization: Bearer <access-token>"
-```
+## Deployment (DigitalOcean App Platform)
 
-Download a scan file:
-```bash
-curl http://localhost:8080/api/scans/<scan-id>/file \
-  -H "Authorization: Bearer <access-token>" \
-  --output scan.glb
-```
+### Recommended setup
+- Backend: DigitalOcean App Platform service
+- Database: Supabase Postgres or DigitalOcean managed Postgres
+- Model files: Firebase Storage bucket
 
-## Container Build
+### Steps
+1. Push repo to GitHub.
+2. Create App Platform app from repo (`backend/` as build context).
+3. Set HTTP port `8080`.
+4. Add environment variables from your `.env` (as encrypted secrets where appropriate).
+5. Deploy and verify `/api/health`.
 
-Build the image from `backend/`:
-```bash
-docker build -t lidarpro-backend .
-```
-
-Run it:
-```bash
-docker run --rm -p 8080:8080 --env-file .env lidarpro-backend
-```
-
-## Deployment Notes
-- For local-only storage, mount a persistent volume to the storage root directory.
-- For cloud deployment, prefer `APP_STORAGE_PROVIDER=firebase` and a managed Postgres database.
-- Ensure `APP_STORAGE_PUBLIC_BASE_URL` points to the public API base, for example `https://api.example.com/api/scans`.
+## Security Baseline
+- BCrypt password hashing
+- JWT signature + issuer/audience validation
+- Ownership checks on scan data
+- Upload extension restrictions for model files
 
 ## Troubleshooting
 
-### App cannot connect to Postgres
-- Verify the datasource URL or `DB_*` values.
-- If you are using Docker Compose locally, confirm the container is healthy with `docker compose ps`.
+### `Connection to localhost:5432 refused` in cloud
+Your app is using local DB host in production.
+Use managed DB host/pooler (not `localhost`) in `SPRING_DATASOURCE_URL`.
 
-### Auth requests fail with 400 or 500
-- Confirm `APP_AUTH_JWT_SECRET` is set.
-- Check that the database schema can be created by JPA for the configured datasource.
+### `NoRouteToHost` to Supabase
+Usually wrong host/port or wrong network mode.
+Use Supabase pooler endpoint and SSL mode.
 
-### File upload returns storage errors
-- Ensure `APP_STORAGE_ROOT_DIR` is writable when `APP_STORAGE_PROVIDER=local`.
-- Ensure `APP_STORAGE_FIREBASE_BUCKET` is set when `APP_STORAGE_PROVIDER=firebase`.
-- Ensure the runtime has Google credentials, either through `APP_STORAGE_FIREBASE_CREDENTIALS_PATH` or application default credentials.
-- Ensure `APP_STORAGE_PUBLIC_BASE_URL` includes `/api/scans` so generated download URLs are correct.
+### Auth returns 500/400 unexpectedly
+- Check DB migrations/schema and datasource env vars.
+- Check `APP_AUTH_JWT_SECRET` exists.
 
-### Cloud deployment fails against local DB settings
-- Do not use `localhost` in production datasource URLs.
-- Use the managed database host or pooler endpoint instead.
+### Firebase upload failures
+- Verify `APP_STORAGE_FIREBASE_PROJECT_ID` and `APP_STORAGE_FIREBASE_BUCKET`.
+- Provide a valid service-account JSON through `APP_STORAGE_FIREBASE_CREDENTIALS_JSON`, `APP_STORAGE_FIREBASE_CREDENTIALS_BASE64`, `APP_STORAGE_FIREBASE_CREDENTIALS_FILE`, or `GOOGLE_APPLICATION_CREDENTIALS`.
+- Confirm the service account has Storage object read/write permissions for the bucket.
 
 ## Related Docs
-- Root project readme: [../README.md](../README.md)
+- Root overview: [../README.md](../README.md)
+- Frontend docs: [../frontend/README.md](../frontend/README.md)

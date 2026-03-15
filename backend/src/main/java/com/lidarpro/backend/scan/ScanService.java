@@ -17,6 +17,8 @@ import com.lidarpro.backend.config.StorageProperties;
 import com.lidarpro.backend.storage.BinaryStorageService;
 import com.lidarpro.backend.storage.StoredObject;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -26,8 +28,9 @@ import org.springframework.web.multipart.MultipartFile;
 @Transactional
 public class ScanService {
 
+    private static final Logger log = LoggerFactory.getLogger(ScanService.class);
     private static final Set<String> ALLOWED_MODEL_EXTENSIONS = new HashSet<>(
-        Arrays.asList("glb", "gltf", "obj")
+        Arrays.asList("glb", "gltf", "obj", "stl", "ply", "usdz")
     );
     private static final int MAX_METADATA_JSON_CHARS = 1_000_000;
 
@@ -51,8 +54,13 @@ public class ScanService {
     public ScanResponse create(UUID ownerUserId, MultipartFile file, String metadataJson) {
         validateIncomingModelFile(file);
         CreateScanMetadataRequest metadata = parseCreateMetadata(metadataJson);
-        String actualModelFormat = inferModelFormat(file.getOriginalFilename());
-        validateRequestedModelFormat(metadata.getModelFormat(), actualModelFormat);
+        log.info(
+            "scan_create_started ownerUserId={} filename={} sizeBytes={} provider={}",
+            ownerUserId,
+            file.getOriginalFilename(),
+            file.getSize(),
+            storageProperties.getProvider()
+        );
 
         String namespace = StringUtils.hasText(metadata.getTitle()) ? metadata.getTitle() : "scan";
         StoredObject stored = binaryStorageService.save(file, namespace);
@@ -65,7 +73,7 @@ public class ScanService {
         entity.setSource(defaultString(metadata.getSource(), "device"));
         entity.setStorageLocation(defaultString(metadata.getStorageLocation(), "device"));
         entity.setArEngine(defaultString(metadata.getArEngine(), "unknown"));
-        entity.setModelFormat(actualModelFormat);
+        entity.setModelFormat(defaultModelFormat(metadata.getModelFormat(), stored.originalFilename()));
 
         entity.setStoragePath(stored.storagePath());
         entity.setOriginalFilename(stored.originalFilename());
@@ -96,17 +104,31 @@ public class ScanService {
         entity.setExtraMetadataJson(toJson(metadata.getExtraMetadata()));
 
         ScanEntity saved = scanRepository.save(entity);
+        log.info(
+            "scan_create_completed ownerUserId={} scanId={} storagePath={} sizeBytes={}",
+            ownerUserId,
+            saved.getId(),
+            saved.getStoragePath(),
+            saved.getFileSizeBytes()
+        );
         return toResponse(saved);
     }
 
     @Transactional(readOnly = true)
     public List<ScanResponse> list(UUID ownerUserId) {
-        return scanRepository.findAllByOwnerUserIdOrderByCreatedAtDesc(ownerUserId).stream().map(this::toResponse).toList();
+        List<ScanResponse> scans = scanRepository.findAllByOwnerUserIdOrderByCreatedAtDesc(ownerUserId)
+            .stream()
+            .map(this::toResponse)
+            .toList();
+        log.info("scan_list ownerUserId={} count={}", ownerUserId, scans.size());
+        return scans;
     }
 
     @Transactional(readOnly = true)
     public ScanResponse getById(UUID ownerUserId, String id) {
-        return toResponse(getEntity(ownerUserId, id));
+        ScanEntity entity = getEntity(ownerUserId, id);
+        log.info("scan_get ownerUserId={} scanId={}", ownerUserId, entity.getId());
+        return toResponse(entity);
     }
 
     public ScanResponse update(UUID ownerUserId, String id, UpdateScanMetadataRequest request) {
@@ -147,7 +169,9 @@ public class ScanService {
             entity.setExtraMetadataJson(toJson(request.getExtraMetadata()));
         }
 
-        return toResponse(scanRepository.save(entity));
+        ScanEntity saved = scanRepository.save(entity);
+        log.info("scan_update ownerUserId={} scanId={}", ownerUserId, saved.getId());
+        return toResponse(saved);
     }
 
     public ScanResponse markSynced(UUID ownerUserId, String id, SyncScanRequest request) {
@@ -160,18 +184,23 @@ public class ScanService {
         }
 
         entity.setCloudSyncedAt(Instant.now());
-        return toResponse(scanRepository.save(entity));
+        ScanEntity saved = scanRepository.save(entity);
+        log.info("scan_mark_synced ownerUserId={} scanId={} cloudModelUrl={}", ownerUserId, saved.getId(), saved.getCloudModelUrl());
+        return toResponse(saved);
     }
 
     public void delete(UUID ownerUserId, String id) {
         ScanEntity entity = getEntity(ownerUserId, id);
+        log.info("scan_delete_started ownerUserId={} scanId={} storagePath={}", ownerUserId, entity.getId(), entity.getStoragePath());
         binaryStorageService.delete(entity.getStoragePath());
         scanRepository.delete(entity);
+        log.info("scan_delete_completed ownerUserId={} scanId={}", ownerUserId, entity.getId());
     }
 
     @Transactional(readOnly = true)
     public ScanFileDownload readModelFile(UUID ownerUserId, String id) {
         ScanEntity entity = getEntity(ownerUserId, id);
+        log.info("scan_file_read ownerUserId={} scanId={} storagePath={}", ownerUserId, entity.getId(), entity.getStoragePath());
         return new ScanFileDownload(
             binaryStorageService.loadAsResource(entity.getStoragePath()),
             defaultString(entity.getContentType(), "application/octet-stream"),
@@ -210,7 +239,7 @@ public class ScanService {
     }
 
     private ScanResponse toResponse(ScanEntity entity) {
-        String fileUrl = buildFileUrl(entity.getId());
+        String fileUrl = "%s/%s/file".formatted(storageProperties.getPublicBaseUrl(), entity.getId());
         String modelUrl = StringUtils.hasText(entity.getCloudModelUrl()) ? entity.getCloudModelUrl() : fileUrl;
 
         return new ScanResponse(
@@ -293,14 +322,16 @@ public class ScanService {
         return "Scan %s (%s)".formatted(filename, Instant.now());
     }
 
-    private String inferModelFormat(String filename) {
-        if (!StringUtils.hasText(filename)) {
-            return "glb";
+    private String defaultModelFormat(String explicit, String filename) {
+        if (StringUtils.hasText(explicit)) {
+            return explicit.trim().toLowerCase(Locale.ROOT);
         }
 
-        int idx = filename.lastIndexOf('.');
-        if (idx > -1 && idx < filename.length() - 1) {
-            return filename.substring(idx + 1).toLowerCase(Locale.ROOT);
+        if (StringUtils.hasText(filename)) {
+            int idx = filename.lastIndexOf('.');
+            if (idx > -1 && idx < filename.length() - 1) {
+                return filename.substring(idx + 1).toLowerCase(Locale.ROOT);
+            }
         }
 
         return "glb";
@@ -308,33 +339,6 @@ public class ScanService {
 
     private String defaultString(String value, String fallback) {
         return StringUtils.hasText(value) ? value.trim() : fallback;
-    }
-
-    private void validateRequestedModelFormat(String requestedFormat, String actualFormat) {
-        if (!StringUtils.hasText(requestedFormat)) {
-            return;
-        }
-
-        String normalizedRequested = requestedFormat.trim().toLowerCase(Locale.ROOT);
-        if (!normalizedRequested.equals(actualFormat)) {
-            throw new IllegalArgumentException("metadata modelFormat must match the uploaded file extension.");
-        }
-    }
-
-    private String buildFileUrl(UUID scanId) {
-        String baseUrl = StringUtils.hasText(storageProperties.getPublicBaseUrl())
-            ? storageProperties.getPublicBaseUrl().trim()
-            : "/api/scans";
-
-        if (baseUrl.endsWith("/")) {
-            baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
-        }
-
-        if (baseUrl.matches("^https?://[^/]+$")) {
-            baseUrl = baseUrl + "/api/scans";
-        }
-
-        return "%s/%s/file".formatted(baseUrl, scanId);
     }
 
     private void validateIncomingModelFile(MultipartFile file) {
@@ -350,6 +354,7 @@ public class ScanService {
 
         String extension = filename.substring(idx + 1).toLowerCase(Locale.ROOT);
         if (!ALLOWED_MODEL_EXTENSIONS.contains(extension)) {
+            log.warn("scan_create_rejected filename={} extension={} reason=unsupported_type", filename, extension);
             throw new IllegalArgumentException("Unsupported model file type.");
         }
     }

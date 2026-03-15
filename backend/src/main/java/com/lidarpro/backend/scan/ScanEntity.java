@@ -18,7 +18,7 @@ public class ScanEntity {
     @Id
     private UUID id;
 
-    @Column(name = "owner_user_id")
+    @Column
     private UUID ownerUserId;
 
     @Column(nullable = false, length = 200)

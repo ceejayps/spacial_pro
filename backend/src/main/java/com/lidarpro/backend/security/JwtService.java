@@ -7,17 +7,20 @@ import java.util.Date;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+
 import javax.crypto.SecretKey;
 
 import com.lidarpro.backend.auth.AuthProperties;
 import com.lidarpro.backend.user.AppUserEntity;
+
+import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
+
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
-import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
 
 @Service
 public class JwtService {
@@ -35,7 +38,9 @@ public class JwtService {
 
         this.jwtIssuer = sanitizeClaim(authProperties.getJwtIssuer(), "lidarpro-backend");
         this.jwtAudience = sanitizeClaim(authProperties.getJwtAudience(), "lidarpro-mobile-app");
-        this.signingKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+
+        byte[] keyBytes = secret.getBytes(StandardCharsets.UTF_8);
+        this.signingKey = Keys.hmacShaKeyFor(keyBytes);
         this.accessTokenMinutes = Math.max(5, authProperties.getAccessTokenMinutes());
     }
 
@@ -67,12 +72,11 @@ public class JwtService {
             if (!hasExpectedAudience(extractAudienceClaim(claims))) {
                 return null;
             }
+            UUID userId = UUID.fromString(claims.getSubject());
+            String email = String.valueOf(claims.get("email"));
+            String fullName = String.valueOf(claims.get("name"));
 
-            return new AppUserPrincipal(
-                UUID.fromString(claims.getSubject()),
-                String.valueOf(claims.get("email")),
-                String.valueOf(claims.get("name"))
-            );
+            return new AppUserPrincipal(userId, email, fullName);
         } catch (JwtException | IllegalArgumentException ex) {
             return null;
         }
@@ -90,6 +94,7 @@ public class JwtService {
         }
 
         try {
+            // JJWT 0.12 may expose audience through dedicated API depending on parser config.
             return claims.getAudience();
         } catch (Exception ignored) {
             return null;
@@ -107,6 +112,7 @@ public class JwtService {
                 return true;
             }
 
+            // Some providers serialize "aud" as a space-delimited string.
             String[] parts = normalized.split("\\s+");
             for (String part : parts) {
                 if (jwtAudience.equals(part)) {

@@ -12,8 +12,8 @@ import com.lidarpro.backend.common.NotFoundException;
 import com.lidarpro.backend.common.StorageException;
 import com.lidarpro.backend.config.StorageProperties;
 
-import jakarta.annotation.PostConstruct;
-
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
@@ -21,9 +21,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
+import jakarta.annotation.PostConstruct;
+
 @Service
 @ConditionalOnProperty(prefix = "app.storage", name = "provider", havingValue = "local", matchIfMissing = true)
 public class LocalDiskStorageService implements BinaryStorageService {
+
+    private static final Logger log = LoggerFactory.getLogger(LocalDiskStorageService.class);
 
     private final StorageProperties storageProperties;
     private Path root;
@@ -37,6 +41,7 @@ public class LocalDiskStorageService implements BinaryStorageService {
         try {
             root = Paths.get(storageProperties.getRootDir()).normalize().toAbsolutePath();
             Files.createDirectories(root);
+            log.info("storage_local_initialized root={}", root);
         } catch (IOException ex) {
             throw new StorageException("Unable to initialize storage root directory.", ex);
         }
@@ -60,6 +65,7 @@ public class LocalDiskStorageService implements BinaryStorageService {
         try {
             Files.createDirectories(target.getParent());
             Files.copy(file.getInputStream(), target, StandardCopyOption.REPLACE_EXISTING);
+            log.info("storage_local_save path={} filename={} sizeBytes={}", relativePath, file.getOriginalFilename(), file.getSize());
             return new StoredObject(
                 relativePath,
                 file.getOriginalFilename(),
@@ -78,6 +84,7 @@ public class LocalDiskStorageService implements BinaryStorageService {
             throw new NotFoundException("Stored model file not found.");
         }
 
+        log.info("storage_local_load path={}", storagePath);
         return new FileSystemResource(resolved);
     }
 
@@ -86,6 +93,7 @@ public class LocalDiskStorageService implements BinaryStorageService {
         Path resolved = resolve(storagePath);
         try {
             Files.deleteIfExists(resolved);
+            log.info("storage_local_delete path={}", storagePath);
         } catch (IOException ex) {
             throw new StorageException("Unable to delete stored model file.", ex);
         }

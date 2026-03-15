@@ -8,11 +8,13 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
@@ -28,7 +30,7 @@ public class SecurityConfig {
 
     public SecurityConfig(
         JwtAuthenticationFilter jwtAuthenticationFilter,
-        @Value("${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173,capacitor://localhost,ionic://localhost}") String allowedOrigins
+        @Value("${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173,https://*.ondigitalocean.app,capacitor://localhost,ionic://localhost}") String allowedOrigins
     ) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
         this.allowedOriginPatterns = Arrays.stream(allowedOrigins.split(","))
@@ -43,11 +45,10 @@ public class SecurityConfig {
             .cors((cors) -> cors.configurationSource(corsConfigurationSource()))
             .csrf((csrf) -> csrf.disable())
             .sessionManagement((session) -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .exceptionHandling((exceptions) -> exceptions.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
             .authorizeHttpRequests((auth) -> auth
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                .requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/health", "/actuator/health").permitAll()
-                .requestMatchers("/api/auth/me", "/api/scans/**").authenticated()
+                .requestMatchers("/api/auth/register", "/api/auth/login", "/api/health", "/actuator/health", "/actuator/info").permitAll()
                 .anyRequest().authenticated()
             )
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
@@ -66,10 +67,10 @@ public class SecurityConfig {
     CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOriginPatterns(allowedOriginPatterns);
-        configuration.setAllowedMethods(List.of("OPTIONS", "GET", "POST", "PATCH", "DELETE"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "Origin"));
+        configuration.setAllowedMethods(List.of("*"));
+        configuration.setAllowedHeaders(List.of("*"));
         configuration.setExposedHeaders(List.of("Authorization", "Content-Disposition"));
-        configuration.setAllowCredentials(true);
+        configuration.setAllowCredentials(false);
         configuration.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
