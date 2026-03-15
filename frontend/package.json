@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "postinstall": "node ./scripts/patch-camera-preview-swift-package.mjs",
     "dev": "node ./node_modules/vite/bin/vite.js",
     "build": "node ./node_modules/vite/bin/vite.js build",
     "typecheck": "node ./node_modules/typescript/bin/tsc --noEmit",

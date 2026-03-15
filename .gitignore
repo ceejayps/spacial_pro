@@ -31,9 +31,11 @@ coverage/
 **/.vite/
 frontend/ios/App/Pods/
 frontend/ios/App/build/
+frontend/ios/build/
 frontend/android/.gradle/
 frontend/android/app/build/
 frontend/android/build/
+frontend/.gradle-local/
 
 # Java / Maven / backend
 **/target/

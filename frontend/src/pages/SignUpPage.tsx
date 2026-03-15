@@ -76,7 +76,7 @@ export default function SignUpPage() {
         <header className="mb-12">
           <div className="mb-10 flex items-center gap-3 text-primary">
             <span className="material-symbols-outlined text-4xl">scan</span>
-            <span className="text-4xl font-semibold leading-none tracking-wide">LiDAR PRO</span>
+            <span className="text-4xl font-semibold leading-none tracking-wide">Spacial Pro</span>
           </div>
 
           <h1 className="text-6xl font-bold leading-[1.05] text-slate-100">Create Account</h1>
